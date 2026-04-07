@@ -1,36 +1,67 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AISCAN - AI Procurement Auditing Platform
 
-## Getting Started
+AISCAN — bu davlat va korporativ xaridlar hujjatlarini (Texnik topshiriqlar, shartnomalar, tijorat takliflari) sun'iy intellekt (Gemini 3.1 Pro) yordamida chuqur tahlil qilish va audit qilish uchun mo'ljallangan professional platforma.
 
-First, run the development server:
+## 🚀 Asosiy Imkoniyatlar
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- **Meticulous Per-Clause Audit**: Har bir bandni alohida va sinchkovlik bilan tekshirish.
+- **Ko'p tillilik (Multilingual)**: O'zbek, Rus va Ingliz tillarida to'liq tahlil va kesh tizimi.
+- **Affiliatsiya Tahlili**: Turli kompaniyalar o'rtasidagi yashirin bog'liqliklarni (ta'sischilar, STIR) aniqlash.
+- **Market Tahlili**: Texnik talablar asosida bozordan mos kompaniyalar va o'rtacha narxlarni topish.
+- **Admin Panel**: Foydalanuvchilarni boshqarish, ichki nizomlarni yuklash va barcha tahlillarni kuzatish.
+- **Xavfsizlik**: Hujjatlar va tahlillar MongoDB bazasida xavfsiz saqlanadi.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🛠 Texnologiyalar
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- **Frontend/Backend**: [Next.js 15 (App Router)](https://nextjs.org/)
+- **Sun'iy Intellekt**: [Google Gemini 3.1 Pro API](https://ai.google.dev/)
+- **Ma'lumotlar bazasi**: [MongoDB](https://www.mongodb.com/)
+- **Stilizatsiya**: Glassmorphism UI (Vanilla CSS)
+- **Autentifikatsiya**: Iron Session
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 📦 O'rnatish va Ishga tushirish
 
-## Learn More
+1. **Repozitoriyani yuklab oling:**
+   ```bash
+   git clone <repo-url>
+   cd aiscan2
+   ```
 
-To learn more about Next.js, take a look at the following resources:
+2. **Kutubxonalarni o'rnating:**
+   ```bash
+   npm install
+   ```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+3. **Muhit o'zgaruvchilarini sozlang:**
+   Loyihaning ildiz papkasida `.env.local` faylini yarating va quyidagi ma'lumotlarni kiriting:
+   ```env
+   MONGODB_URI=mongodb://localhost:27017/aiscan3_db
+   GEMINI_API_KEY=Sizning_API_Kalitingiz
+   GEMINI_MODEL=gemini-3.1-pro-preview
+   SESSION_SECRET=kamida_32_belgili_maxfiy_satr
+   ```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+4. **Loyiha ishga tushiring:**
+   ```bash
+   npm run dev
+   ```
+   Loyiha [http://localhost:3000](http://localhost:3000) manzilida ochiladi.
 
-## Deploy on Vercel
+## 📁 Loyiha Strukturasi
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- `/app`: Sahifalar va API yo'llari (Next.js App Router).
+- `/components`: Qayta ishlatiladigan UI komponentlar.
+- `/lib`: Ma'lumotlar bazasi modellari, ulanishlar va tarjimalar.
+- `/public`: Rasmlar, fontlar va global CSS uslublari.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 🔐 Admin Panel
+
+Admin panelga kirish uchun `/admin/login` sahifasiga o'ting.
+*Eslatma: Birinchi foydalanuvchini ma'lumotlar bazasi (`users` collection) orqali qo'shishingiz mumkin.*
+
+## 📄 Litsenziya
+
+Ushbu loyiha tijorat loyihasi bo'lib, barcha huquqlar himoyalangan.
+
+---
+**AISCAN Team — 2026**

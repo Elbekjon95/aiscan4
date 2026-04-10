@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectToDatabase from '@/lib/mongodb';
-import RequestModel from '@/lib/models/Request';
-import InternalDocModel from '@/lib/models/InternalDoc';
+import prisma from '@/lib/prisma';
 import { callGeminiStream } from '@/lib/gemini';
 import crypto from 'crypto';
+import { getSession } from '@/lib/auth';
 
 const mammoth = require('mammoth');
 
@@ -21,16 +20,17 @@ export async function POST(req: NextRequest) {
         const fileHash = crypto.createHash('md5').update(buffer).digest('hex');
         const fileExt = file.name.split('.').pop()?.toLowerCase();
 
-        await connectToDatabase();
-
-        // Cached check (simulate fast cache hit)
-        const existing = await RequestModel.findOne({ 
-            file_hash: fileHash, 
-            analysis_type: 'document',
-            language: lang 
+        // Cached check
+        const existing = await prisma.request.findFirst({ 
+            where: {
+                file_hash: fileHash, 
+                analysis_type: 'document',
+                language: lang 
+            }
         });
+        
         if (existing) {
-            return NextResponse.json({ ...existing.full_analysis, success: true, is_cached: true, request_id: existing._id });
+            return NextResponse.json({ ...(existing.full_analysis as any), success: true, is_cached: true, request_id: existing.id });
         }
 
         // Extract Text
@@ -46,8 +46,19 @@ export async function POST(req: NextRequest) {
 
         const cleanedText = text.substring(0, 15000); // limit to avoid massive context
         
-        // Fetch Internal Docs Context
-        const internalDocs = await InternalDocModel.find().limit(5);
+        const session = await getSession();
+        const airport = session.airport || 'TAS';
+
+        // Fetch Internal Docs Context (Global + Local)
+        const internalDocs = await prisma.internalDoc.findMany({
+            where: {
+                OR: [
+                    { is_global: true },
+                    { airport: airport }
+                ]
+            }
+        });
+
         let docsContext = '';
         if (internalDocs.length > 0) {
             docsContext = 'KOMPANIYANING ICHKI QOIDALARI VA NIZOMLARI (Shu qoidalarga qatʼiy rioya etilishini tekshiring):\n\n';
@@ -61,7 +72,7 @@ export async function POST(req: NextRequest) {
         // Dynamic Section Titles based on language
         const tSummary = lang === 'uz' ? "Boshqaruv xulosasi (Meticulous Summary)" : (lang === 'ru' ? "Управленческое резюме (Тщательный аудит)" : "Executive Summary (Meticulous Audit)");
         const tAudit = lang === 'uz' ? "Har bir band bo'yicha Texnik-Huquqiy Audit" : (lang === 'ru' ? "Технико-юридический аудит по каждому пункту" : "Point-by-point Technical and Legal Audit");
-        const tPricing = lang === 'uz' ? "Hujjatdagi Narx va Sifat tahlili" : (lang === 'ru' ? "Анализ цен и качества в документе" : "Price and Quality Analysis in the Document");
+        const tPricing = lang === 'uz' ? "Hujjatdagi Narx va Sifat tahlili" : (lang === 'ru' ? "Анализ цен va Sifat tahlili" : "Price and Quality Analysis in the Document");
 
         const prompt = `
 # SYSTEM INSTRUCTION: UZBEKISTAN PROCUREMENT COMPLIANCE AUDITOR (AVATARBEK) - METICULOUS PER-CLAUSE AUDIT
@@ -150,7 +161,7 @@ Javobni FAQAT QUYIDAGI JSON FORMATIDA, istisnosiz ${targetLangName} tilida qayta
 
         const allParts: any[] = [{ text: prompt }];
 
-        // PDF bo'lsa, faylni rasmli context uchun ham jo'natamiz
+        // PDF context if applicable
         if (fileExt === 'pdf') {
             const base64Data = buffer.toString('base64');
             allParts.push({
@@ -161,7 +172,7 @@ Javobni FAQAT QUYIDAGI JSON FORMATIDA, istisnosiz ${targetLangName} tilida qayta
         const data = {
             contents: [{ role: "user", parts: allParts }],
             generationConfig: {
-                temperature: 0.2, // Stable, factual
+                temperature: 0.2,
                 maxOutputTokens: 8192,
                 responseMimeType: "application/json"
             }
@@ -170,22 +181,26 @@ Javobni FAQAT QUYIDAGI JSON FORMATIDA, istisnosiz ${targetLangName} tilida qayta
         const resultJson = await callGeminiStream(data);
 
         // Save to DB
-        const newReq = await RequestModel.create({
-            file_name: file.name,
-            file_type: fileExt,
-            file_hash: fileHash,
-            analysis_score: resultJson.total_score || resultJson.score || 0,
-            compliance_score: resultJson.compliance_score || 0,
-            favoritism_score: resultJson.favoritism_score || 0,
-            analysis_type: 'document',
-            language: lang,
-            full_analysis: resultJson
+        const newReq = await prisma.request.create({
+            data: {
+                file_name: file.name,
+                file_type: fileExt,
+                file_hash: fileHash,
+                analysis_score: resultJson.total_score || resultJson.score || 0,
+                compliance_score: resultJson.compliance_score || 0,
+                favoritism_score: resultJson.favoritism_score || 0,
+                analysis_type: 'document',
+                language: lang,
+                airport: airport,
+                full_analysis: resultJson
+            }
         });
 
-        return NextResponse.json({ ...resultJson, success: true, request_id: newReq._id });
+        return NextResponse.json({ ...resultJson, success: true, request_id: newReq.id });
 
     } catch (err: any) {
         console.error("Analyze API error:", err);
         return NextResponse.json({ success: false, error: err.message }, { status: 500 });
     }
 }
+

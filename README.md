@@ -19,7 +19,7 @@ AISCAN — bu davlat va korporativ xaridlar hujjatlarini (Texnik topshiriqlar, s
 - **Stilizatsiya**: Glassmorphism UI (Vanilla CSS)
 - **Autentifikatsiya**: Iron Session
 
-## 📦 O'rnatish va Ishga tushirish
+## 📦 O'rnatish va Ishga tushirishEL
 
 1. **Repozitoriyani yuklab oling:**
    ```bash

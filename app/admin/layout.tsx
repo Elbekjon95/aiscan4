@@ -9,11 +9,15 @@ export default async function AdminLayout({
     const session = await getSession();
 
     return (
-        <div>
-            <Navbar isAdmin={session.role === 'admin'} />
-            <div className="container">
+        <main className="admin-layout">
+            <Navbar 
+                isAdmin={session.role === 'admin' || session.role === 'super_admin'} 
+                isLoggedIn={session.isLoggedIn}
+                role={session.role}
+            />
+            <div className="admin-content">
                 {children}
             </div>
-        </div>
+        </main>
     );
 }

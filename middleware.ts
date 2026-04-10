@@ -21,8 +21,8 @@ export async function middleware(request: NextRequest) {
     }
 
     // Protect all other /admin routes
-    if (!session.isLoggedIn) {
-      const loginUrl = new URL('/admin/login', request.url);
+    if (!session.isLoggedIn || session.role === 'user') {
+      const loginUrl = new URL(session.role === 'user' ? '/' : '/admin/login', request.url);
       // Preserve language and other query params
       request.nextUrl.searchParams.forEach((value, key) => {
         loginUrl.searchParams.set(key, value);

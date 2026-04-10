@@ -1,5 +1,5 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Navbar from '@/components/Layout/Navbar';
 import Footer from '@/components/Layout/Footer';
 import LoaderWrapper from '@/components/UI/LoaderWrapper';
@@ -17,6 +17,19 @@ export default function Home() {
     const [statusText, setStatusText] = useState('');
     const [resultData, setResultData] = useState<any>(null);
     const [error, setError] = useState<string | null>(null);
+
+    const [me, setMe] = useState<any>(null);
+
+    useEffect(() => {
+        const fetchMe = async () => {
+            try {
+                const res = await fetch('/api/auth/me');
+                const data = await res.json();
+                if (data.isLoggedIn) setMe(data);
+            } catch (err) {}
+        };
+        fetchMe();
+    }, []);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
@@ -84,7 +97,7 @@ export default function Home() {
 
     return (
         <>
-            <Navbar />
+            <Navbar isLoggedIn={!!me} role={me?.role} />
             <LoaderWrapper isLoading={isLoading} text={statusText} />
             
             <div className="container">

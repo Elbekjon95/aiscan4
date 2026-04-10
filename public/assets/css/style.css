@@ -755,3 +755,120 @@ footer {
     font-size: 0.8rem;
     color: var(--text-muted);
 }
+/* Admin Panel Premium Enhancements */
+.admin-card {
+    background: rgba(30, 41, 59, 0.4);
+    backdrop-filter: blur(25px) saturate(180%);
+    -webkit-backdrop-filter: blur(25px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 1.5rem;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    padding: 2.5rem;
+    height: 100%;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.admin-card:hover {
+    box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.45);
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+.input-field {
+    background: rgba(15, 23, 42, 0.6) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 0.8rem !important;
+    padding: 0.8rem 1.2rem !important;
+    color: white !important;
+    width: 100%;
+    transition: all 0.3s ease !important;
+    outline: none !important;
+}
+
+.input-field:focus {
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 15px rgba(76, 99, 168, 0.3) !important;
+    background: rgba(15, 23, 42, 0.9) !important;
+}
+
+.admin-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0 0.8rem;
+}
+
+.admin-table th {
+    padding: 1.2rem;
+    text-align: left;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 600;
+}
+
+.admin-table tr {
+    background: rgba(255, 255, 255, 0.02);
+    transition: all 0.2s ease;
+}
+
+.admin-table tr:hover {
+    background: rgba(255, 255, 255, 0.05);
+    transform: scale(1.005);
+}
+
+.admin-table td {
+    padding: 1.2rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.03);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.admin-table td:first-child { border-left: 1px solid rgba(255, 255, 255, 0.03); border-radius: 1rem 0 0 1rem; }
+.admin-table td:last-child { border-right: 1px solid rgba(255, 255, 255, 0.03); border-radius: 0 1rem 1rem 0; }
+
+.badge {
+    padding: 0.4rem 0.8rem;
+    border-radius: 0.6rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.badge-primary { background: rgba(76, 99, 168, 0.2); color: #818cf8; border: 1px solid rgba(76, 99, 168, 0.3); }
+.badge-gold { background: rgba(212, 175, 55, 0.2); color: var(--secondary); border: 1px solid rgba(212, 175, 55, 0.3); }
+.badge-red { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+
+.action-btn {
+    padding: 0.5rem;
+    border-radius: 0.6rem;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-muted);
+    transition: all 0.2s ease;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.action-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: white;
+    transform: translateY(-2px);
+}
+
+.action-btn.delete:hover { border-color: var(--error); color: var(--error); }
+.action-btn.edit:hover { border-color: var(--primary); color: var(--primary); }
+
+.form-label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 0.6rem;
+    color: var(--text-muted);
+    transition: color 0.3s ease;
+}
+
+.input-group:focus-within .form-label {
+    color: var(--primary);
+}

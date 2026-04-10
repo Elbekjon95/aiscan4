@@ -12,6 +12,7 @@ export interface IRequest extends Document {
   full_analysis?: any;
   corrected_version?: string;
   language: string;
+  airport: string; // IATA code: TAS, SKD...
   created_at: Date;
 }
 
@@ -27,6 +28,7 @@ const RequestSchema: Schema = new Schema({
   full_analysis: { type: Schema.Types.Mixed },
   corrected_version: { type: String },
   language: { type: String, default: 'uz', index: true },
+  airport: { type: String, default: 'TAS', index: true },
   created_at: { type: Date, default: Date.now },
 });
 

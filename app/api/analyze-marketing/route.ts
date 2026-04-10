@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectToDatabase from '@/lib/mongodb';
-import RequestModel from '@/lib/models/Request';
-import BlacklistModel from '@/lib/models/Blacklist';
+import prisma from '@/lib/prisma';
 import { callGeminiStream } from '@/lib/gemini';
+import { getSession } from '@/lib/auth';
 
 const mammoth = require('mammoth');
 
@@ -21,7 +20,6 @@ export async function POST(req: NextRequest) {
 
         let text = '';
         if (fileExt === 'pdf') {
-            
             text = '';
         } else if (fileExt === 'docx') {
             const result = await mammoth.extractRawText({ buffer });
@@ -82,20 +80,20 @@ Javob tili: ${targetLangName}
 
         const resultJson = await callGeminiStream(data);
 
-        await connectToDatabase();
-
         // Check blacklist
         if (resultJson.organizations) {
             for (const org of resultJson.organizations) {
                 org.is_blacklisted = false;
                 org.blacklist_reason = null;
                 
-                const query: any = [];
-                if (org.stir) query.push({ stir: org.stir });
-                if (org.name) query.push({ name: { $regex: new RegExp(org.name, 'i') } });
+                const orQuery: any = [];
+                if (org.stir) orQuery.push({ stir: org.stir });
+                if (org.name) orQuery.push({ name: { contains: org.name, mode: 'insensitive' } });
 
-                if (query.length > 0) {
-                    const blacklisted = await BlacklistModel.findOne({ $or: query });
+                if (orQuery.length > 0) {
+                    const blacklisted = await prisma.blacklist.findFirst({
+                        where: { OR: orQuery }
+                    });
                     if (blacklisted) {
                         org.is_blacklisted = true;
                         org.blacklist_reason = blacklisted.reason;
@@ -104,17 +102,25 @@ Javob tili: ${targetLangName}
             }
         }
 
-        const newReq = await RequestModel.create({
-            file_name: file.name,
-            file_type: fileExt,
-            analysis_type: 'marketing',
-            full_analysis: resultJson
+        const session = await getSession();
+        const airport = session.airport || 'TAS';
+
+        const newReq = await prisma.request.create({
+            data: {
+                file_name: file.name,
+                file_type: fileExt,
+                analysis_type: 'marketing',
+                airport: airport,
+                language: lang,
+                full_analysis: resultJson
+            }
         });
 
-        return NextResponse.json({ ...resultJson, success: true, request_id: newReq._id });
+        return NextResponse.json({ ...resultJson, success: true, request_id: newReq.id });
 
     } catch (err: any) {
         console.error("Marketing API error:", err);
         return NextResponse.json({ success: false, error: err.message }, { status: 500 });
     }
 }
+

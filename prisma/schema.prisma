@@ -1,0 +1,92 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  super_admin
+  admin
+  user
+}
+
+model User {
+  id         String   @id @default(cuid())
+  username   String   @unique
+  password   String
+  role       Role     @default(user)
+  airport    String   @default("TAS")
+  is_primary Boolean  @default(false)
+  created_at DateTime @default(now())
+}
+
+enum AirportType {
+  international
+  regional
+}
+
+model Airport {
+  id         String      @id @default(cuid())
+  name       String
+  code       String      @unique
+  type       AirportType @default(international)
+  is_active  Boolean     @default(true)
+  notes      String?
+  created_at DateTime    @default(now())
+}
+
+model Blacklist {
+  id         String   @id @default(cuid())
+  stir       String
+  name       String
+  reason     String
+  airport    String   @default("ALL")
+  is_global  Boolean  @default(false)
+  created_at DateTime @default(now())
+}
+
+model InternalDoc {
+  id         String   @id @default(cuid())
+  title      String
+  content    String?
+  file_type  String?
+  airport    String   @default("ALL")
+  is_global  Boolean  @default(false)
+  embedding  Float[]
+  created_at DateTime @default(now())
+}
+
+enum AnalysisType {
+  document
+  affiliation
+  marketing
+}
+
+model Request {
+  id                String       @id @default(cuid())
+  file_name         String
+  file_type         String?
+  file_hash         String?
+  analysis_score    Float?
+  compliance_score  Float?
+  favoritism_score  Float?
+  analysis_type     AnalysisType @default(document)
+  affiliation_status String?
+  full_analysis     Json?
+  corrected_version String?
+  language          String       @default("uz")
+  airport           String       @default("TAS")
+  created_at        DateTime     @default(now())
+
+  @@index([file_hash])
+  @@index([language])
+  @@index([airport])
+}
+

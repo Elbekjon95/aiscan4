@@ -13,6 +13,7 @@ export const sessionOptions = {
 export interface SessionData {
   userId?: string;
   role?: string;
+  airport?: string;
   lang?: string;
   isLoggedIn: boolean;
 }

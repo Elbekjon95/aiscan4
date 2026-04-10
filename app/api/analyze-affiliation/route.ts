@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectToDatabase from '@/lib/mongodb';
-import RequestModel from '@/lib/models/Request';
-import { callGeminiStream, GEMINI_API_KEY } from '@/lib/gemini';
+import prisma from '@/lib/prisma';
+import { callGeminiStream } from '@/lib/gemini';
+import { getSession } from '@/lib/auth';
 
 const mammoth = require('mammoth');
 
@@ -64,7 +64,7 @@ ${documentsContext}
 ${govInfoText}
 
 QADAMLAR:
-1. Kompaniyalarni aniqla: Barcha kompaniyalar, rahbarlar, ta'sischilar, STIR (INN) larni fayllardan qidir.
+1. Kompaniyalar aniqla: Barcha kompaniyalar, rahbarlar, ta'sischilar, STIR (INN) larni fayllardan qidir.
 2. Yashirin aloqalarni qidir (Affiliation Search):
    - Yuridik izlar: Bir xil manzil, ta'sischi, direktor
    - Raqamli izlar: Bir xil telefon raqamlar, e-mail domenlar, rekvizitlar.
@@ -132,17 +132,22 @@ Format exactly like this JSON:
 
         const resultJson = await callGeminiStream(data);
 
-        await connectToDatabase();
-        
+        const session = await getSession();
+        const airport = session.airport || 'TAS';
+
         const fileNames = files.map(f => f.name).join(' | ');
-        const newReq = await RequestModel.create({
-            file_name: fileNames,
-            analysis_type: 'affiliation',
-            affiliation_status: resultJson.collusion_status || 'no_risk',
-            full_analysis: resultJson
+        const newReq = await prisma.request.create({
+            data: {
+                file_name: fileNames,
+                analysis_type: 'affiliation',
+                affiliation_status: resultJson.collusion_status || 'no_risk',
+                airport: airport,
+                language: lang,
+                full_analysis: resultJson
+            }
         });
 
-        return NextResponse.json({ ...resultJson, success: true, request_id: newReq._id });
+        return NextResponse.json({ ...resultJson, success: true, request_id: newReq.id });
 
     } catch (err: any) {
         console.error("Affiliation API error:", err);

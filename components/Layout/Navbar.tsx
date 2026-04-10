@@ -4,13 +4,15 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { getTranslation } from '@/lib/translations';
-import { FileText, Network, ShoppingCart, LogIn, LayoutDashboard } from 'lucide-react';
+import { FileText, Network, ShoppingCart, LogIn, LogOut, LayoutDashboard } from 'lucide-react';
 
 interface NavbarProps {
     isAdmin?: boolean;
+    isLoggedIn?: boolean;
+    role?: string;
 }
 
-export default function Navbar({ isAdmin = false }: NavbarProps) {
+export default function Navbar({ isAdmin = false, isLoggedIn = false, role }: NavbarProps) {
     const pathname = usePathname();
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -45,31 +47,45 @@ export default function Navbar({ isAdmin = false }: NavbarProps) {
             </div>
             
             <div className="nav-links">
-                {pathname.startsWith('/admin') ? (
+                {pathname === '/admin/login' ? (
+                    null // Hide links on login page
+                ) : pathname.startsWith('/admin') ? (
                     <>
-                        <Link href={`/admin?lang=${lang}`} className={isCurrent('/admin') ? 'active' : ''}>
-                            <LayoutDashboard size={18} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />
-                            {getTranslation(lang, 'nav_dashboard')}
-                        </Link>
+                        {isAdmin && (
+                            <Link href={`/admin?lang=${lang}`} className={isCurrent('/admin') ? 'active' : ''}>
+                                <LayoutDashboard size={18} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />
+                                {getTranslation(lang, 'nav_dashboard')}
+                            </Link>
+                        )}
                         {isAdmin && (
                             <>
                                 <Link href={`/admin/docs?lang=${lang}`} className={isCurrent('/admin/docs') ? 'active' : ''}>{getTranslation(lang, 'nav_docs')}</Link>
                                 <Link href={`/admin/users?lang=${lang}`} className={isCurrent('/admin/users') ? 'active' : ''}>{getTranslation(lang, 'nav_users')}</Link>
+                                {role === 'super_admin' && (
+                                    <Link href={`/admin/airports?lang=${lang}`} className={isCurrent('/admin/airports') ? 'active' : ''}>Aeroportlar</Link>
+                                )}
                                 <Link href={`/admin/blacklist?lang=${lang}`} className={isCurrent('/admin/blacklist') ? 'active' : ''}>{getTranslation(lang, 'nav_blacklist')}</Link>
                             </>
                         )}
                         <Link href={`/?lang=${lang}`}>{getTranslation(lang, 'nav_site')}</Link>
-                        <button 
-                            type="button" 
-                            onClick={async () => {
-                                await fetch('/api/auth/logout', { method: 'POST' });
-                                router.push(`/admin/login?lang=${lang}`);
-                                router.refresh();
-                            }}
-                            style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 600 }}
-                        >
-                            {getTranslation(lang, 'nav_logout')}
-                        </button>
+                        {isLoggedIn || isAdmin ? (
+                            <button 
+                                type="button" 
+                                onClick={async () => {
+                                    await fetch('/api/auth/logout', { method: 'POST' });
+                                    window.location.href = `/admin/login?lang=${lang}`;
+                                }}
+                                style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}
+                            >
+                                <LogOut size={18} />
+                                {getTranslation(lang, 'nav_logout')}
+                            </button>
+                        ) : (
+                            <Link href={`/admin/login?lang=${lang}`} style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <LogIn size={18} />
+                                {lang === 'uz' ? 'Kirish' : (lang === 'ru' ? 'Вход' : 'Login')}
+                            </Link>
+                        )}
                     </>
                 ) : (
                     <>
@@ -85,10 +101,24 @@ export default function Navbar({ isAdmin = false }: NavbarProps) {
                             <ShoppingCart size={18} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />
                             {getTranslation(lang, 'nav_marketing')}
                         </Link>
-                        <Link href={`/admin/login?lang=${lang}`} style={{ color: 'var(--text-muted)' }}>
-                            <LogIn size={18} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />
-                            Admin
-                        </Link>
+                        {isLoggedIn || isAdmin ? (
+                            <button 
+                                type="button" 
+                                onClick={async () => {
+                                    await fetch('/api/auth/logout', { method: 'POST' });
+                                    window.location.href = `/admin/login?lang=${lang}`;
+                                }}
+                                style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}
+                            >
+                                <LogOut size={18} />
+                                {getTranslation(lang, 'nav_logout')}
+                            </button>
+                        ) : (
+                            <Link href={`/admin/login?lang=${lang}`} style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <LogIn size={18} />
+                                {lang === 'uz' ? 'Kirish' : (lang === 'ru' ? 'Вход' : 'Login')}
+                            </Link>
+                        )}
                     </>
                 )}
                 

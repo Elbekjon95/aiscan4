@@ -4,7 +4,7 @@ import { getIronSession } from 'iron-session';
 import { cookies } from 'next/headers';
 import { sessionOptions, SessionData } from '@/lib/auth';
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const res = NextResponse.next();
   const session = await getIronSession<SessionData>(await cookies(), sessionOptions);
 

@@ -1,0 +1,13 @@
+RewriteEngine On
+RewriteBase /
+
+# Step 1: Forward all requests to the Node.js application running on port 3000
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ http://127.0.0.1:3000/$1 [P,L]
+
+# Step 2: Handle the home page
+RewriteRule ^$ http://127.0.0.1:3000/ [P,L]
+
+# Error handling
+ErrorDocument 503 "The application is starting up or unavailable. Please wait a moment and refresh."

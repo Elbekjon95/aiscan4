@@ -1,20 +1,17 @@
 import React from 'react';
 export const dynamic = 'force-dynamic';
-import connectToDatabase from '@/lib/mongodb';
-import RequestModel from '@/lib/models/Request';
-import AirportModel from '@/lib/models/Airport';
+import prisma from '@/lib/prisma';
 import { getTranslation } from '@/lib/translations';
 import { getSession } from '@/lib/auth';
 import Link from 'next/link';
-import { FileText, Network, ShoppingCart, Eye, BarChart3, Activity, AlertTriangle } from 'lucide-react';
+import { FileText, Network, ShoppingCart, Eye, BarChart3, Activity } from 'lucide-react';
 import ChartComponent from './ChartComponent'; // Client side chart component
+import { AnalysisType } from '@prisma/client';
 
 export default async function AdminDashboard({ searchParams }: { searchParams: { tab?: string, page?: string, lang?: string, airport?: string } }) {
-    await connectToDatabase();
-    
     const session = await getSession();
     const sParams = await searchParams;
-    const tab = sParams.tab || 'document';
+    const tabString = sParams.tab || 'document';
     const pageStr = sParams.page || '1';
     const lang = sParams.lang || 'uz';
     const selectedAirport = sParams.airport || '';
@@ -22,6 +19,11 @@ export default async function AdminDashboard({ searchParams }: { searchParams: {
     const page = parseInt(pageStr, 10);
     const limit = 10;
     const skip = (page - 1) * limit;
+
+    // Map tab string to AnalysisType enum
+    let tab: AnalysisType = AnalysisType.document;
+    if (tabString === 'affiliation') tab = AnalysisType.affiliation;
+    if (tabString === 'marketing') tab = AnalysisType.marketing;
 
     // Filter by airport logic
     let filter: any = { analysis_type: tab };
@@ -31,33 +33,35 @@ export default async function AdminDashboard({ searchParams }: { searchParams: {
         filter.airport = session.airport || 'TAS';
     }
 
-    const totalRequests = await RequestModel.countDocuments(filter);
+    const totalRequests = await prisma.request.count({ where: filter });
     
-    let avgScore = '0%';
+    let avgScoreString = '0%';
     let riskCount = 0;
     let avgLabel = getTranslation(lang, 'stats_avg');
     let titleBadge = '';
 
-    if (tab === 'document') {
-        const stats = await RequestModel.aggregate([
-            { $match: { ...filter, analysis_type: 'document' } },
-            { $group: { _id: null, avg_score: { $avg: '$analysis_score' } } }
-        ]);
-        if (stats.length > 0) {
-            avgScore = Math.round(stats[0].avg_score) + '%';
+    if (tab === AnalysisType.document) {
+        const stats = await prisma.request.aggregate({
+            where: { ...filter, analysis_type: AnalysisType.document },
+            _avg: { analysis_score: true }
+        });
+        if (stats._avg.analysis_score) {
+            avgScoreString = Math.round(stats._avg.analysis_score) + '%';
         }
         titleBadge = 'Hujjatlar';
-    } else if (tab === 'affiliation') {
-        riskCount = await RequestModel.countDocuments({ 
-            ...filter,
-            analysis_type: 'affiliation', 
-            affiliation_status: { $in: ['direct_affiliation', 'suspected_collusion'] } 
+    } else if (tab === AnalysisType.affiliation) {
+        riskCount = await prisma.request.count({ 
+            where: { 
+                ...filter,
+                analysis_type: AnalysisType.affiliation, 
+                affiliation_status: { in: ['direct_affiliation', 'suspected_collusion'] } 
+            }
         });
-        avgScore = riskCount.toString();
+        avgScoreString = riskCount.toString();
         avgLabel = "Shubhali/Xavfli Holatlar";
         titleBadge = 'Affiliatsiya';
     } else {
-        avgScore = "---";
+        avgScoreString = "---";
         avgLabel = "Marketing qidiruvlari";
         titleBadge = 'Marketing';
     }
@@ -68,36 +72,44 @@ export default async function AdminDashboard({ searchParams }: { searchParams: {
     for (let i = 5; i >= 0; i--) {
         const start = new Date(d.getFullYear(), d.getMonth() - i, 1);
         const end = new Date(d.getFullYear(), d.getMonth() - i + 1, 0);
-        const count = await RequestModel.countDocuments({
-            ...filter,
-            analysis_type: tab,
-            created_at: { $gte: start, $lte: end }
+        const count = await prisma.request.count({
+            where: {
+                ...filter,
+                analysis_type: tab,
+                created_at: { gte: start, lte: end }
+            }
         });
         const monthLabel = start.toLocaleString('en-US', { month: 'short' });
         monthlyStats[monthLabel] = count;
     }
 
-    const recentRequests = await RequestModel.find(filter)
-        .sort({ created_at: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean();
+    const recentRequests = await prisma.request.findMany({
+        where: filter,
+        orderBy: { created_at: 'desc' },
+        skip: skip,
+        take: limit
+    });
 
     const totalPages = Math.ceil(totalRequests / limit);
 
-    const airportsData = await AirportModel.find({ is_active: true }).sort({ type: 1, name: 1 }).lean();
+    const airportsData = await prisma.airport.findMany({ 
+        where: { is_active: true },
+        orderBy: [{ type: 'asc' }, { name: 'asc' }]
+    });
     const airports = [
         { code: '', name: 'Barcha Aeroportlar' },
-        ...airportsData.map((ap: any) => ({ code: ap.code, name: `${ap.name} (${ap.code})` }))
+        ...airportsData.map((ap) => ({ code: ap.code, name: `${ap.name} (${ap.code})` }))
     ];
 
     // Airport Specific Activity for Super Admin (if no airport is selected)
     let airportActivity: any[] = [];
     if (session.role === 'super_admin' && !selectedAirport) {
-        airportActivity = await RequestModel.aggregate([
-            { $group: { _id: '$airport', count: { $sum: 1 } } },
-            { $sort: { count: -1 } }
-        ]);
+        const groups = await prisma.request.groupBy({
+            by: ['airport'],
+            _count: { _all: true },
+            orderBy: { _count: { airport: 'desc' } }
+        });
+        airportActivity = groups.map(g => ({ _id: g.airport, count: g._count._all }));
     }
 
     return (
@@ -111,7 +123,7 @@ export default async function AdminDashboard({ searchParams }: { searchParams: {
                         {airports.map(ap => (
                             <Link 
                                 key={ap.code} 
-                                href={`?tab=${tab}&lang=${lang}&airport=${ap.code}`}
+                                href={`?tab=${tabString}&lang=${lang}&airport=${ap.code}`}
                                 className={`btn ${selectedAirport === ap.code ? 'btn-glow' : 'btn-secondary'}`}
                                 style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
                             >
@@ -123,13 +135,13 @@ export default async function AdminDashboard({ searchParams }: { searchParams: {
             )}
 
             <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', justifyContent: 'center' }}>
-                <Link href={`?tab=document&lang=${lang}&airport=${selectedAirport}`} className={`btn ${tab === 'document' ? 'btn-glow' : 'btn-secondary'}`} style={{ fontSize: '1rem', padding: '0.8rem 2rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Link href={`?tab=document&lang=${lang}&airport=${selectedAirport}`} className={`btn ${tabString === 'document' ? 'btn-glow' : 'btn-secondary'}`} style={{ fontSize: '1rem', padding: '0.8rem 2rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <FileText size={18} /> Hujjat Tahlillari
                 </Link>
-                <Link href={`?tab=affiliation&lang=${lang}&airport=${selectedAirport}`} className={`btn ${tab === 'affiliation' ? 'btn-glow' : 'btn-secondary'}`} style={{ fontSize: '1rem', padding: '0.8rem 2rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Link href={`?tab=affiliation&lang=${lang}&airport=${selectedAirport}`} className={`btn ${tabString === 'affiliation' ? 'btn-glow' : 'btn-secondary'}`} style={{ fontSize: '1rem', padding: '0.8rem 2rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <Network size={18} /> {getTranslation(lang, 'nav_affiliation')}
                 </Link>
-                <Link href={`?tab=marketing&lang=${lang}&airport=${selectedAirport}`} className={`btn ${tab === 'marketing' ? 'btn-glow' : 'btn-secondary'}`} style={{ fontSize: '1rem', padding: '0.8rem 2rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Link href={`?tab=marketing&lang=${lang}&airport=${selectedAirport}`} className={`btn ${tabString === 'marketing' ? 'btn-glow' : 'btn-secondary'}`} style={{ fontSize: '1rem', padding: '0.8rem 2rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <ShoppingCart size={18} /> {getTranslation(lang, 'nav_marketing')}
                 </Link>
             </div>
@@ -141,7 +153,7 @@ export default async function AdminDashboard({ searchParams }: { searchParams: {
                 </div>
                 <div className="stat-card">
                     <span className="stat-label">{avgLabel}</span>
-                    <span className="stat-value" style={{ color: 'var(--secondary)' }}>{avgScore}</span>
+                    <span className="stat-value" style={{ color: 'var(--secondary)' }}>{avgScoreString}</span>
                 </div>
                 {session.role === 'super_admin' && !selectedAirport && (
                     <div className="stat-card">
@@ -149,7 +161,7 @@ export default async function AdminDashboard({ searchParams }: { searchParams: {
                         <span className="stat-value" style={{ color: 'var(--primary)' }}>{airportActivity.length}</span>
                     </div>
                 )}
-                {riskCount > 0 && (
+                {riskCount > 0 && totalRequests > 0 && (
                     <div className="stat-card" style={{ borderColor: 'var(--error)' }}>
                         <span className="stat-label" style={{ color: 'var(--error)' }}>Xavfli holatlar</span>
                         <span className="stat-value" style={{ color: 'var(--error)' }}>{Math.round((riskCount / totalRequests) * 100)}%</span>
@@ -186,19 +198,19 @@ export default async function AdminDashboard({ searchParams }: { searchParams: {
                         <tr>
                             <th style={{ padding: '1.2rem', textAlign: 'left', borderBottom: '1px solid var(--glass-border)', color: 'var(--text-muted)' }}>{getTranslation(lang, 'table_file')}</th>
                             <th style={{ padding: '1.2rem', textAlign: 'left', borderBottom: '1px solid var(--glass-border)', color: 'var(--text-muted)' }}>Aeroport</th>
-                            {tab === 'document' && (
+                            {tabString === 'document' && (
                                 <>
                                     <th style={{ padding: '1.2rem', textAlign: 'left', borderBottom: '1px solid var(--glass-border)', color: 'var(--text-muted)' }}>{getTranslation(lang, 'table_score')}</th>
                                     <th style={{ padding: '1.2rem', textAlign: 'left', borderBottom: '1px solid var(--glass-border)', color: 'var(--text-muted)' }}>{getTranslation(lang, 'table_comp')}</th>
                                 </>
                             )}
-                            {tab === 'affiliation' && (
+                            {tabString === 'affiliation' && (
                                 <>
                                     <th style={{ padding: '1.2rem', textAlign: 'left', borderBottom: '1px solid var(--glass-border)', color: 'var(--text-muted)' }}>Xavf Holati</th>
                                     <th style={{ padding: '1.2rem', textAlign: 'left', borderBottom: '1px solid var(--glass-border)', color: 'var(--text-muted)' }}>Dalillar soni</th>
                                 </>
                             )}
-                            {tab === 'marketing' && (
+                            {tabString === 'marketing' && (
                                 <th style={{ padding: '1.2rem', textAlign: 'left', borderBottom: '1px solid var(--glass-border)', color: 'var(--text-muted)' }}>Tashkilotlar soni</th>
                             )}
                             <th style={{ padding: '1.2rem', textAlign: 'left', borderBottom: '1px solid var(--glass-border)', color: 'var(--text-muted)' }}>{getTranslation(lang, 'table_date')}</th>
@@ -212,33 +224,34 @@ export default async function AdminDashboard({ searchParams }: { searchParams: {
                             if (row.affiliation_status === 'suspected_collusion') { badge = 'warning'; lbl = 'Shubhali'; }
                             if (row.affiliation_status === 'direct_affiliation') { badge = 'danger'; lbl = 'Tasdiqlandi'; }
                             
-                            const linksCount = row.full_analysis?.links?.length || 0;
-                            const orgsCount = row.full_analysis?.organizations?.length || 0;
+                            const fullAnalysis: any = row.full_analysis || {};
+                            const linksCount = fullAnalysis.links?.length || 0;
+                            const orgsCount = fullAnalysis.organizations?.length || 0;
 
                             const fileName = row.file_name?.length > 50 ? row.file_name.substring(0, 50) + '...' : row.file_name;
 
                             return (
-                                <tr key={row._id.toString()}>
+                                <tr key={row.id}>
                                     <td style={{ padding: '1.2rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>{fileName}</td>
                                     <td style={{ padding: '1.2rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}><span className="badge secondary">{row.airport || 'TAS'}</span></td>
-                                    {tab === 'document' && (
+                                    {tabString === 'document' && (
                                         <>
                                             <td style={{ padding: '1.2rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}><span className="badge success">{row.analysis_score}%</span></td>
                                             <td style={{ padding: '1.2rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>{row.compliance_score}%</td>
                                         </>
                                     )}
-                                    {tab === 'affiliation' && (
+                                    {tabString === 'affiliation' && (
                                         <>
                                             <td style={{ padding: '1.2rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}><span className={`badge ${badge}`}>{lbl}</span></td>
                                             <td style={{ padding: '1.2rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>{linksCount} ta</td>
                                         </>
                                     )}
-                                    {tab === 'marketing' && (
+                                    {tabString === 'marketing' && (
                                         <td style={{ padding: '1.2rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>{orgsCount} ta olindi</td>
                                     )}
                                     <td style={{ padding: '1.2rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>{new Date(row.created_at).toLocaleString()}</td>
                                     <td style={{ padding: '1.2rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                                        <Link href={`/admin/view/${row._id}?lang=${lang}`} className="btn-icon" style={{ display: 'inline-flex', padding: '0.4rem', background: 'rgba(255,255,255,0.1)', borderRadius: '0.4rem', color: 'white' }}>
+                                        <Link href={`/admin/view/${row.id}?lang=${lang}`} className="btn-icon" style={{ display: 'inline-flex', padding: '0.4rem', background: 'rgba(255,255,255,0.1)', borderRadius: '0.4rem', color: 'white' }}>
                                             <Eye size={18} />
                                         </Link>
                                     </td>
@@ -251,9 +264,9 @@ export default async function AdminDashboard({ searchParams }: { searchParams: {
 
             {totalPages > 1 && (
                 <div className="pagination" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '2rem', marginBottom: '2rem' }}>
-                    {page > 1 && <Link href={`?tab=${tab}&page=${page - 1}&lang=${lang}&airport=${selectedAirport}`} className="btn btn-secondary">&laquo; {getTranslation(lang, 'prev')}</Link>}
+                    {page > 1 && <Link href={`?tab=${tabString}&page=${page - 1}&lang=${lang}&airport=${selectedAirport}`} className="btn btn-secondary">&laquo; {getTranslation(lang, 'prev')}</Link>}
                     <span className="page-info" style={{ color: 'var(--text-muted)', fontWeight: 500 }}>{getTranslation(lang, 'page')} {page} / {totalPages}</span>
-                    {page < totalPages && <Link href={`?tab=${tab}&page=${page + 1}&lang=${lang}&airport=${selectedAirport}`} className="btn btn-secondary">{getTranslation(lang, 'next')} &raquo;</Link>}
+                    {page < totalPages && <Link href={`?tab=${tabString}&page=${page + 1}&lang=${lang}&airport=${selectedAirport}`} className="btn btn-secondary">{getTranslation(lang, 'next')} &raquo;</Link>}
                 </div>
             )}
         </div>

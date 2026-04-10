@@ -1,25 +1,22 @@
 import React from 'react';
-import connectToDatabase from '@/lib/mongodb';
-import RequestModel from '@/lib/models/Request';
+import prisma from '@/lib/prisma';
 import { getTranslation } from '@/lib/translations';
 import AnalysisResults from '@/components/Analysis/AnalysisResults';
-// We copy the rendering logic for admin view so we don't cause circular dependencies
-// between pages.
 
 export default async function AdminViewPage({ params, searchParams }: { params: { id: string }, searchParams: { lang?: string } }) {
-    await connectToDatabase();
-    
     const sParams = await searchParams;
     const { id } = await params;
     const lang = sParams.lang || 'uz';
 
-    const reqData = await RequestModel.findById(id).lean();
+    const reqData = await prisma.request.findUnique({
+        where: { id }
+    });
 
     if (!reqData) {
         return <div style={{ padding: '5rem', textAlign: 'center' }}>Zapros topilmadi.</div>;
     }
 
-    const data = reqData.full_analysis;
+    const data: any = reqData.full_analysis || {};
 
     return (
         <div className="view-container" style={{ maxWidth: '1300px', margin: '3rem auto', padding: '0 5%' }}>
@@ -37,7 +34,6 @@ export default async function AdminViewPage({ params, searchParams }: { params: 
     );
 }
 
-// Inline components to render Affiliation and Marketing inside admin view without needing to export from page.tsx files
 function AdminAffiliationResults({ data, lang }: { data: any, lang: string }) {
     const { links, companies, collusion_status, summary, price_analysis } = data;
     

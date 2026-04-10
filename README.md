@@ -1,6 +1,6 @@
 # AISCAN - AI Procurement Auditing Platform
 
-AISCAN — bu davlat va korporativ xaridlar hujjatlarini (Texnik topshiriqlar, shartnomalar, tijorat takliflari) sun'iy intellekt (Gemini 3.1 Pro) yordamida chuqur tahlil qilish va audit qilish uchun mo'ljallangan professional platforma.
+AISCAN — bu davlat va korporativ xaridlar hujjatlarini (Texnik topshiriqlar, shartnomalar, tijorat takliflari) sun'iy intellekt (Gemini 2.0 Flash / Pro) yordamida chuqur tahlil qilish va audit qilish uchun mo'ljallangan professional platforma.
 
 ## 🚀 Asosiy Imkoniyatlar
 
@@ -9,21 +9,22 @@ AISCAN — bu davlat va korporativ xaridlar hujjatlarini (Texnik topshiriqlar, s
 - **Affiliatsiya Tahlili**: Turli kompaniyalar o'rtasidagi yashirin bog'liqliklarni (ta'sischilar, STIR) aniqlash.
 - **Market Tahlili**: Texnik talablar asosida bozordan mos kompaniyalar va o'rtacha narxlarni topish.
 - **Admin Panel**: Foydalanuvchilarni boshqarish, ichki nizomlarni yuklash va barcha tahlillarni kuzatish.
-- **Xavfsizlik**: Hujjatlar va tahlillar MongoDB bazasida xavfsiz saqlanadi.
+- **Xavfsizlik**: Ma'lumotlar PostgreSQL bazasida Prisma ORM orqali xavfsiz va optimallashgan holda saqlanadi.
 
 ## 🛠 Texnologiyalar
 
-- **Frontend/Backend**: [Next.js 15 (App Router)](https://nextjs.org/)
-- **Sun'iy Intellekt**: [Google Gemini 3.1 Pro API](https://ai.google.dev/)
-- **Ma'lumotlar bazasi**: [MongoDB](https://www.mongodb.com/)
+- **Frontend/Backend**: [Next.js 16 (App Router)](https://nextjs.org/)
+- **Sun'iy Intellekt**: [Google Gemini 2.0 Flash API](https://ai.google.dev/)
+- **Ma'lumotlar bazasi**: [PostgreSQL](https://www.postgresql.org/)
+- **ORM**: [Prisma 7 (Driver Adapter model)](https://www.prisma.io/)
 - **Stilizatsiya**: Glassmorphism UI (Vanilla CSS)
 - **Autentifikatsiya**: Iron Session
 
-## 📦 O'rnatish va Ishga tushirishEL
+## 📦 O'rnatish va Ishga tushirish
 
 1. **Repozitoriyani yuklab oling:**
    ```bash
-   git clone <repo-url>
+   git clone https://github.com/Elbekjon95/aiscan2.git
    cd aiscan2
    ```
 
@@ -33,15 +34,22 @@ AISCAN — bu davlat va korporativ xaridlar hujjatlarini (Texnik topshiriqlar, s
    ```
 
 3. **Muhit o'zgaruvchilarini sozlang:**
-   Loyihaning ildiz papkasida `.env.local` faylini yarating va quyidagi ma'lumotlarni kiriting:
+   Loyihaning ildiz papkasida `.env` faylini yarating va quyidagi ma'lumotlarni kiriting:
    ```env
-   MONGODB_URI=mongodb://localhost:27017/aiscan3_db
+   # Open Server Panel 6 uchun misol (IP manzilingizni \conninfo orqali tekshiring)
+   DATABASE_URL="postgresql://postgres:root@127.127.126.49:5432/aiscan_db?schema=public"
+   
    GEMINI_API_KEY=Sizning_API_Kalitingiz
-   GEMINI_MODEL=gemini-3.1-pro-preview
    SESSION_SECRET=kamida_32_belgili_maxfiy_satr
    ```
 
-4. **Loyiha ishga tushiring:**
+4. **Ma'lumotlar bazasini tayyorlash:**
+   ```bash
+   npx prisma generate
+   npx prisma db push
+   ```
+
+5. **Loyiha ishga tushiring:**
    ```bash
    npm run dev
    ```
@@ -51,13 +59,16 @@ AISCAN — bu davlat va korporativ xaridlar hujjatlarini (Texnik topshiriqlar, s
 
 - `/app`: Sahifalar va API yo'llari (Next.js App Router).
 - `/components`: Qayta ishlatiladigan UI komponentlar.
-- `/lib`: Ma'lumotlar bazasi modellari, ulanishlar va tarjimalar.
+- `/lib`: Prisma Client, ulanishlar va tarjimalar.
+- `/prisma`: Ma'lumotlar bazasi sxemasi (`schema.prisma`).
 - `/public`: Rasmlar, fontlar va global CSS uslublari.
 
-## 🔐 Admin Panel
+## 🔐 Admin Panel va Birinchi kirish
 
 Admin panelga kirish uchun `/admin/login` sahifasiga o'ting.
-*Eslatma: Birinchi foydalanuvchini ma'lumotlar bazasi (`users` collection) orqali qo'shishingiz mumkin.*
+
+> [!TIP]
+> **Ilk kirish:** Tizimda hali adminlar bo'lmasa, siz kiritgan birinchi login va parol avtomatik ravishda **Super Admin** sifatida ro'yxatdan o'tadi va bazaga saqlanadi.
 
 ## 📄 Litsenziya
 

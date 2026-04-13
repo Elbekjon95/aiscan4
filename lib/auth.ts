@@ -5,6 +5,7 @@ import { cookies } from 'next/headers';
 export const sessionOptions = {
   password: process.env.SESSION_SECRET || 'complex_password_at_least_32_characters_long',
   cookieName: 'aiscan_session',
+  ttl: 15 * 60, // 15 daqiqa
   cookieOptions: {
     secure: process.env.NODE_ENV === 'production',
   },

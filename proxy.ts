@@ -10,30 +10,42 @@ export async function proxy(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
-  // Protect /admin routes
-  if (pathname.startsWith('/admin')) {
-    // Allow /admin/login
-    if (pathname === '/admin/login') {
-      if (session.isLoggedIn) {
-        return NextResponse.redirect(new URL('/admin', request.url));
-      }
-      return res;
-    }
+  // 1. Ochiq yo'nalishlar (Public paths)
+  const isPublicPath = 
+    pathname === '/admin/login' || 
+    pathname.startsWith('/api/auth') ||
+    pathname.startsWith('/_next/') || 
+    pathname.startsWith('/assets/') || 
+    pathname === '/favicon.ico' ||
+    pathname === '/header_logo.png';
 
-    // Protect all other /admin routes
-    if (!session.isLoggedIn || session.role === 'user') {
-      const loginUrl = new URL(session.role === 'user' ? '/' : '/admin/login', request.url);
-      // Preserve language and other query params
-      request.nextUrl.searchParams.forEach((value, key) => {
-        loginUrl.searchParams.set(key, value);
-      });
-      return NextResponse.redirect(loginUrl);
-    }
+  // 2. Agar foydalanuvchi tizimga kirmagan bo'lsa va yo'nalish ochiq bo'lmasa -> Loginga
+  if (!session.isLoggedIn && !isPublicPath) {
+    const loginUrl = new URL('/admin/login', request.url);
+    // Til va boshqa parametrlarni saqlab qolish
+    request.nextUrl.searchParams.forEach((value, key) => {
+      loginUrl.searchParams.set(key, value);
+    });
+    return NextResponse.redirect(loginUrl);
+  }
+
+  // 3. Agar foylalanuvchi tizimga kirgan bo'lsa va login sahifasiga bormoqchi bo'lsa -> Panelga
+  if (session.isLoggedIn && pathname === '/admin/login') {
+    const adminUrl = new URL('/admin', request.url);
+    request.nextUrl.searchParams.forEach((value, key) => {
+      adminUrl.searchParams.set(key, value);
+    });
+    return NextResponse.redirect(adminUrl);
+  }
+
+  // 4. Aktivlikni yangilash (Idle timeout)
+  if (session.isLoggedIn) {
+    await session.save();
   }
 
   return res;
 }
 
 export const config = {
-  matcher: ['/admin/:path*'],
+  matcher: ['/((?!_next/static|_next/image|assets|favicon.ico|header_logo.png).*)'],
 };

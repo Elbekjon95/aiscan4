@@ -89,6 +89,12 @@ export default function Navbar({ isAdmin = false, isLoggedIn = false, role }: Na
                     </>
                 ) : (
                     <>
+                        {(role === 'admin' || role === 'super_admin') && (
+                            <Link href={`/admin?lang=${lang}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', textDecoration: 'none', color: 'var(--primary)', fontWeight: 700, border: '1px solid var(--primary-glass)', padding: '4px 12px', borderRadius: '8px', marginRight: '12px', background: 'rgba(255, 215, 0, 0.05)' }}>
+                                <LayoutDashboard size={18} />
+                                {lang === 'uz' ? 'Admin Panel' : (lang === 'ru' ? 'Админ Панель' : 'Admin Panel')}
+                            </Link>
+                        )}
                         <Link href={`/?lang=${lang}`} className={isCurrent('/') ? 'active' : ''}>
                             <FileText size={18} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />
                             Hujjatlar

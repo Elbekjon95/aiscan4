@@ -2,6 +2,8 @@ import React from 'react';
 import prisma from '@/lib/prisma';
 import { getTranslation } from '@/lib/translations';
 import AnalysisResults from '@/components/Analysis/AnalysisResults';
+import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
 
 export default async function AdminViewPage({ params, searchParams }: { params: { id: string }, searchParams: { lang?: string } }) {
     const sParams = await searchParams;
@@ -20,6 +22,12 @@ export default async function AdminViewPage({ params, searchParams }: { params: 
 
     return (
         <div className="view-container" style={{ maxWidth: '1300px', margin: '3rem auto', padding: '0 5%' }}>
+            <div style={{ marginBottom: '1.5rem' }}>
+                <Link href={`/admin?lang=${lang}`} className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', textDecoration: 'none' }}>
+                    <ArrowLeft size={18} /> {lang === 'en' ? 'Back to Dashboard' : (lang === 'ru' ? 'Назад в панель' : 'Dashboardga qaytish')}
+                </Link>
+            </div>
+
             <div className="view-header" style={{ marginBottom: '2rem', borderBottom: '1px solid var(--glass-border)', paddingBottom: '1rem' }}>
                 <h2 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>{lang === 'en' ? 'Document' : (lang === 'ru' ? 'Документ' : 'Hujjat')}: {reqData.file_name}</h2>
                 <p style={{ color: 'var(--text-muted)' }}>{lang === 'en' ? 'Analysis date' : (lang === 'ru' ? 'Дата анализа' : 'Tahlil sanasi')}: {new Date(reqData.created_at).toLocaleString()} • ID: #{id}</p>

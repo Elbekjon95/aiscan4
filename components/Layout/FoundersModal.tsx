@@ -27,6 +27,12 @@ export default function FoundersModal({ onClose, lang }: FoundersModalProps) {
             handle: "@jmirkhadjayev",
             initials: "MJ",
             link: "https://www.mirkhadjayev.uz"
+        },
+        {
+            name: "Shaxboz Muxammaedov",
+            handle: "@shahbos",
+            initials: "MS",
+            link: "https://t.me/shahbos"
         }
     ];
 

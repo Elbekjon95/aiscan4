@@ -132,7 +132,7 @@ export default function UsersManagement() {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    id: editingUser._id,
+                    id: editingUser.id,
                     username: editingUser.username,
                     password: editingUser.password || undefined,
                     role: editingUser.role,
@@ -233,7 +233,7 @@ export default function UsersManagement() {
                                 {users
                                     .filter(u => me?.role === 'super_admin' || u.role !== 'super_admin')
                                     .map(u => (
-                                    <tr key={u._id}>
+                                    <tr key={u.id}>
                                         <td style={{ fontWeight: 600 }}>{u.username}</td>
                                         <td>
                                             <span className={`badge ${u.role === 'super_admin' ? 'badge-red' : (u.role === 'admin' ? 'badge-gold' : 'badge-primary')}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
@@ -252,7 +252,7 @@ export default function UsersManagement() {
                                                         <button onClick={() => openEditModal(u)} className="action-btn edit" title="Tahrirlash">
                                                             <Edit3 size={18} />
                                                         </button>
-                                                        <button onClick={() => handleDeleteUser(u._id)} className="action-btn delete" title="O'chirish">
+                                                        <button onClick={() => handleDeleteUser(u.id)} className="action-btn delete" title="O'chirish">
                                                             <Trash2 size={18} />
                                                         </button>
                                                     </>

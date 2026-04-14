@@ -141,7 +141,7 @@ function MarketingResults({ data, lang }: { data: any, lang: string }) {
                     <thead>
                         <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
                             <th style={{ padding: '0.8rem', color: 'var(--text-muted)', fontSize: '0.75rem', textTransform: 'uppercase', width: '200px' }}>{getTranslation(lang, 'market_table_comp')}</th>
-                            <th style={{ padding: '0.8rem', color: 'var(--text-muted)', fontSize: '0.75rem', textTransform: 'uppercase', width: '100px' }}>{getTranslation(lang, 'market_table_stir')}</th>
+                            <th style={{ padding: '0.8rem', color: 'var(--text-muted)', fontSize: '0.75rem', textTransform: 'uppercase', width: '200px' }}>{getTranslation(lang, 'market_table_product')}</th>
                             <th style={{ padding: '0.8rem', color: 'var(--text-muted)', fontSize: '0.75rem', textTransform: 'uppercase', width: '150px' }}>{getTranslation(lang, 'market_table_location')}</th>
                             <th style={{ padding: '0.8rem', color: 'var(--text-muted)', fontSize: '0.75rem', textTransform: 'uppercase', width: '220px' }}>{getTranslation(lang, 'market_table_contact')}</th>
                             <th style={{ padding: '0.8rem', color: 'var(--text-muted)', fontSize: '0.75rem', textTransform: 'uppercase', width: '80px' }}>{getTranslation(lang, 'market_table_match')}</th>
@@ -159,20 +159,23 @@ function MarketingResults({ data, lang }: { data: any, lang: string }) {
                                     <div style={{ fontSize: '0.8rem', color: 'var(--primary)', marginTop: '0.2rem' }}>
                                         <Globe size={12} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} /> {org.country}
                                     </div>
+                                    {org.stir && <div style={{ fontSize: '0.75rem', opacity: 0.6, marginTop: '2px' }}>INN: {org.stir}</div>}
                                     {org.is_blacklisted && (
                                         <div style={{ fontSize: '0.75rem', color: 'var(--error)', marginTop: '0.3rem' }}>
                                             <strong>{getTranslation(lang, 'market_blacklist_alert')}</strong>: {org.blacklist_reason}
                                         </div>
                                     )}
                                 </td>
-                                <td style={{ padding: '0.8rem', fontFamily: 'monospace', fontSize: '0.9rem' }}>{org.stir || '---'}</td>
+                                <td style={{ padding: '0.8rem', fontSize: '0.9rem', color: '#fff' }}>
+                                    <div style={{ fontWeight: 600 }}>{org.product_name || '---'}</div>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>{org.activity_type}</div>
+                                </td>
                                 <td style={{ padding: '0.8rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>{org.address || ''}</td>
                                 <td style={{ padding: '0.8rem', fontSize: '0.85rem' }}>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><Mail size={12} color="var(--primary)" /> {org.email || ''}</span>
-                                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><Phone size={12} color="var(--primary)" /> {org.phone || ''}</span>
-                                        {org.website && <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><Globe size={12} color="var(--secondary)" /> <a href={org.website} target="_blank" rel="noreferrer" style={{ color: 'var(--secondary)', textDecoration: 'underline' }}>Veb-sayt</a></span>}
-                                        {org.product_url && <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><ExternalLink size={12} color="var(--success)" /> <a href={org.product_url} target="_blank" rel="noreferrer" style={{ color: 'var(--success)', textDecoration: 'underline', fontWeight: 600 }}>Mahsulotni ko'rish</a></span>}
+                                        {org.email && <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><Mail size={12} color="var(--primary)" /> {org.email}</span>}
+                                        {org.phone && <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><Phone size={12} color="var(--primary)" /> {org.phone}</span>}
+                                        {org.website && <a href={org.website} target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--secondary)', textDecoration: 'underline' }}><Globe size={12} /> Veb-sayt</a>}
                                     </div>
                                 </td>
                                 <td style={{ padding: '0.8rem' }}>
@@ -181,9 +184,14 @@ function MarketingResults({ data, lang }: { data: any, lang: string }) {
                                     </span>
                                 </td>
                                 <td style={{ padding: '0.8rem', fontWeight: 700, color: '#fff' }}>
-                                    <div style={{ background: 'rgba(76, 99, 168, 0.2)', padding: '0.5rem', borderRadius: '0.4rem' }}>
+                                    <div style={{ background: 'rgba(76, 99, 168, 0.2)', padding: '0.5rem', borderRadius: '0.4rem', marginBottom: '5px' }}>
                                         {org.market_price}
                                     </div>
+                                    {org.price_source_url && (
+                                        <a href={org.price_source_url} target="_blank" rel="noreferrer" className="btn-shine" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--success)', fontSize: '0.75rem', textDecoration: 'none', background: 'rgba(16, 185, 129, 0.1)', padding: '4px 8px', borderRadius: '4px', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                                            <ExternalLink size={12} /> {getTranslation(lang, 'market_table_source')}
+                                        </a>
+                                    )}
                                 </td>
                             </tr>
                         ))}

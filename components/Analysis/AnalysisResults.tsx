@@ -1,9 +1,11 @@
 'use client';
-import React from 'react';
+import React, { useState } from 'react';
 import { getTranslation } from '@/lib/translations';
-import { Search, Tag, ExternalLink, ShieldCheck, AlertTriangle, XOctagon } from 'lucide-react';
+import { Search, Tag, ShieldCheck, AlertTriangle, XOctagon, FileDown, BookOpen, X } from 'lucide-react';
+import { exportToPDF } from '@/lib/pdfExport';
 
 export default function AnalysisResults({ data, lang }: { data: any, lang: string }) {
+    const [showOptimized, setShowOptimized] = useState(false);
     
     const getIcon = (status: string) => {
         switch(status) {
@@ -41,20 +43,79 @@ export default function AnalysisResults({ data, lang }: { data: any, lang: strin
                 </div>
             )}
 
-            <div style={{ gridColumn: '1 / -1', marginBottom: '1rem' }}>
-                <h2 style={{ fontSize: '2rem', fontWeight: 800 }}>{getTranslation(lang, 'label_main')}</h2>
+            <div style={{ gridColumn: '1 / -1', marginBottom: '2rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h2 style={{ fontSize: '2rem', fontWeight: 800 }}>{getTranslation(lang, 'label_main')}</h2>
+                    <button 
+                        onClick={() => exportToPDF(data, lang)}
+                        className="btn btn-primary btn-glow"
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', padding: '0.8rem 1.5rem' }}
+                    >
+                        <FileDown size={20} />
+                        {getTranslation(lang, 'btn_download_pdf')}
+                    </button>
+                </div>
+                {/* AI tomonidan aniqlangan rasmiy hujjat nomi */}
+                <div style={{ background: 'rgba(79, 70, 229, 0.1)', borderLeft: '4px solid var(--primary)', padding: '1rem 1.5rem', borderRadius: '0.5rem' }}>
+                    <h3 style={{ fontSize: '1.2rem', color: 'white', marginBottom: '0.2rem' }}>
+                        {data.document_title || getTranslation(lang, 'table_file')}
+                    </h3>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                        {getTranslation(lang, 'table_file')}: {data.file_name}
+                    </p>
+                </div>
             </div>
+
+            {/* Audit Basis Section */}
+            {data.audit_basis && data.audit_basis.length > 0 && (
+                <div className="analysis-card" style={{ gridColumn: '1 / -1', background: 'rgba(30, 41, 59, 0.4)', marginBottom: '2rem', border: '1px solid var(--primary)' }}>
+                    <div className="card-title">
+                        <BookOpen color="var(--primary)" />
+                        <span>{getTranslation(lang, 'audit_basis_title')}</span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '1rem' }}>
+                        {data.audit_basis.map((basis: string, idx: number) => (
+                            <div key={idx} style={{ padding: '0.8rem', background: 'rgba(255,255,255,0.03)', borderRadius: '0.5rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <ShieldCheck size={16} color="var(--primary)" />
+                                <span style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>{basis}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Optimized Version Button */}
             {data.corrected_version && (
                 <div style={{ gridColumn: '1 / -1', marginBottom: '2rem' }}>
                     <button 
+                        onClick={() => setShowOptimized(true)}
                         className="btn btn-glow btn-secondary" 
                         style={{ width: '100%', padding: '1.2rem', fontSize: '1.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.8rem', border: '1px solid var(--secondary)', background: 'rgba(212, 175, 55, 0.05)', color: 'var(--secondary)' }}
                     >
                         <ShieldCheck size={24} />
                         {getTranslation(lang, 'btn_view_optimized')}
                     </button>
+                </div>
+            )}
+
+            {/* Modal for Optimized Version */}
+            {showOptimized && (
+                <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+                    <div className="analysis-card" style={{ maxWidth: '900px', width: '100%', maxHeight: '90vh', overflowY: 'auto', position: 'relative', padding: '3rem' }}>
+                        <button onClick={() => setShowOptimized(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', color: 'white', cursor: 'pointer' }}>
+                            <X size={32} />
+                        </button>
+                        <h2 style={{ marginBottom: '2rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                            <ShieldCheck color="var(--secondary)" size={32} />
+                            {getTranslation(lang, 'modal_optimized_title')}
+                        </h2>
+                        <div style={{ background: 'rgba(255,255,255,0.05)', padding: '2rem', borderRadius: '1rem', whiteSpace: 'pre-wrap', lineHeight: '1.8', color: '#e2e8f0', fontSize: '1.1rem' }}>
+                            {data.corrected_version}
+                        </div>
+                        <div style={{ marginTop: '2rem', textAlign: 'center' }}>
+                            <button className="btn btn-secondary" onClick={() => setShowOptimized(false)}>{getTranslation(lang, 'modal_close')}</button>
+                        </div>
+                    </div>
                 </div>
             )}
 
@@ -126,7 +187,7 @@ export default function AnalysisResults({ data, lang }: { data: any, lang: strin
                                     <span style={{ color: '#ef4444', fontSize: '0.8rem', fontWeight: 800 }}>{ev.severity?.toUpperCase()}</span>
                                 </div>
                                 <blockquote style={{ color: '#94a3b8', fontStyle: 'italic', marginBottom: '1rem', borderLeft: '1px solid rgba(255,255,255,0.1)', paddingLeft: '1rem' }}>
-                                    "{ev.quote}"
+                                    &quot;{ev.quote}&quot;
                                 </blockquote>
                                 <p style={{ fontSize: '1rem', lineHeight: '1.6' }}>{ev.reason}</p>
                             </div>

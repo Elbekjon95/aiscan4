@@ -75,9 +75,9 @@ export async function POST(req: NextRequest) {
         const tPricing = lang === 'uz' ? "Hujjatdagi Narx va Sifat tahlili" : (lang === 'ru' ? "Анализ цен va Sifat tahlili" : "Price and Quality Analysis in the Document");
 
         const prompt = `
-# SYSTEM INSTRUCTION: UZBEKISTAN PROCUREMENT COMPLIANCE AUDITOR (AVATARBEK) - METICULOUS PER-CLAUSE AUDIT
+# SYSTEM INSTRUCTION: AISCAN - PROFESSIONAL PROCUREMENT COMPLIANCE AUDIT SYSTEM
 
-Siz — AVATARBEK, O'zbekiston Respublikasi davlat va korporativ xaridlari bo'yicha eng yuqori darajadagi SHAFQATSIZ va SINCHKOV mustaqil ekspert-auditorsiz. 
+Siz — AISCAN, O'zbekiston Respublikasi davlat va korporativ xaridlari bo'yicha eng yuqori darajadagi SHAFQATSIZ va SINCHKOV professional avtomatlashtirilgan ekspert-auditorsiz. 
 Sizning uslubingiz: Har bir so'z, har bir vergul va har bir raqam ostida yashirin korrupsiya yoki favoritizmni topish.
 
 ## 1. NORMATIV BAZA (SIZNING BILIMLARINGIZ)
@@ -112,6 +112,7 @@ Siz ushbu vazifalarni HUJJATNING HAR BIR BANDI (CLAUSE-BY-CLAUSE) BO'YICHA bajar
 Javobni FAQAT QUYIDAGI JSON FORMATIDA, istisnosiz ${targetLangName} tilida qaytaring. Javob maksimal darajada batafsil va "sinchkov" bo'lishi kerak:
 
 {
+  "document_title": "Hujjatning matn ichidagi rasmiy nomi (masalan: Texnik topshiriq №123)",
   "total_score": 0-100 (Audit umumiy bahosi),
   "compliance_score": Qonunchilikka mosligi (0-100),
   "favoritism_score": 0-100 (Loyiha necha foiz "halol" yozilgan),
@@ -151,8 +152,10 @@ Javobni FAQAT QUYIDAGI JSON FORMATIDA, istisnosiz ${targetLangName} tilida qayta
       "details": ["Mahsulot 1: [Bozor narxi tahlili]", "Mahsulot 2: [Bozor narxi tahlili]"]
     }
   ],
+  "audit_basis": ["Ushbu auditda tayanilgan aniq qonunlar va nizomlar ro'yxati"],
   "risks": ["Sinchkov tahlilda aniqlangan barcha xavflar ro'yxati"],
   "recommendations": ["Audit xulosasi asosidagi aniq va barcha harakatlar ro'yxati"],
+  "optimized_version": "Hujjatning barcha xato va kamchiliklari tuzatilgan, favoritizm elementlaridan xoli bo'lgan to'liq yangi matni. Agar matn juda uzun bo'lsa, eng muhim qismlarini (texnik talablar va shartlarni) optimallashtirib bering.",
   "products": [
     { "name": "Mahsulot", "search_query": "Qidiruv so'rovi" }
   ]
@@ -192,11 +195,18 @@ Javobni FAQAT QUYIDAGI JSON FORMATIDA, istisnosiz ${targetLangName} tilida qayta
                 analysis_type: 'document',
                 language: lang,
                 airport: airport,
+                corrected_version: resultJson.optimized_version || null,
                 full_analysis: resultJson
             }
         });
 
-        return NextResponse.json({ ...resultJson, success: true, request_id: newReq.id });
+        return NextResponse.json({ 
+            ...resultJson, 
+            corrected_version: resultJson.optimized_version, 
+            success: true, 
+            request_id: newReq.id,
+            file_name: file.name
+        });
 
     } catch (err: any) {
         console.error("Analyze API error:", err);

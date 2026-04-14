@@ -32,7 +32,10 @@ export async function POST(req: NextRequest) {
 Siz O'zbekistonda xizmat ko'rsatgan yuqori darajadagi xaridlar (procurement) va marketing bo'yicha ekspertsiz. 
 Men senga yuklagan Texnik Talablar (Technical Requirements) hujjatini diqqat bilan o'rganib chiq.
 
-VAZIFA: Ushbu hujjatda so'ralayotgan mahsulot yoki xizmatni JAXON (Xalqaro) va O'ZBEKISTON bozorida taqdim eta oluvchi KAMIDA 10 TA (va undan ko'p bo'lsa hammasini) real tashkilot/firma ro'yxatini topib ber.
+VAZIFA: 
+1. Ushbu hujjatda so'ralayotgan mahsulot yoki xizmatni JAXON (Xalqaro) va O'ZBEKISTON bozorida taqdim eta oluvchi KAMIDA 10 TA real tashkilot/firma ro'yxatini topib ber.
+2. Har bir tashkilot uchun ushbu mahsulotning REAL bozor narxini va shu narx olingan ANIQA MANBANI (URL) top.
+3. Google Search orqali haqiqiy, ishlayotgan linklarni taqdim etishing shart.
 
 JSON FORMATIDA qaytar:
 {
@@ -40,11 +43,13 @@ JSON FORMATIDA qaytar:
     {
       "name": "Full Organization Name",
       "stir": "9-digit TIN or null",
+      "product_name": "Specific product model or service name found",
       "activity_type": "Main activity",
       "email": "info@company.com",
       "phone": "+998...",
       "website": "https://www.company.com",
       "product_url": "https://www.company.com/products/item-link",
+      "price_source_url": "https://specific-price-page-link.com",
       "country": "Davlat nomi",
       "address": "City, Country, Street",
       "match_percent": 85,
@@ -78,7 +83,9 @@ Javob tili: ${targetLangName}
             }
         };
 
+        console.log("Calling Gemini API with model:", process.env.GEMINI_MODEL || 'default');
         const resultJson = await callGeminiStream(data);
+        console.log("Gemini response received successfully");
 
         // Check blacklist
         if (resultJson.organizations) {

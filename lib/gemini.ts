@@ -13,8 +13,9 @@ export async function callGeminiStream(data: any): Promise<any> {
         });
 
         if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error?.message || `HTTP ${response.status}`);
+            const errorBody = await response.text();
+            console.error(`Gemini API Error (Status ${response.status}):`, errorBody);
+            throw new Error(`Gemini API error: ${response.status} - ${errorBody.substring(0, 200)}`);
         }
 
         const json = await response.json();
@@ -28,7 +29,15 @@ export async function callGeminiStream(data: any): Promise<any> {
             }
         }
 
-        if (!textResponse) throw new Error("Empty response from Gemini");
+        // Agar model qidiruv natijasini (Grounding) qaytarsa, uni ham log qilamiz
+        if (json.candidates?.[0]?.groundingMetadata) {
+            console.log("Grounding metadata found");
+        }
+
+        if (!textResponse) {
+            console.error("Gemini returned empty parts. Full JSON:", JSON.stringify(json));
+            throw new Error("Gemini empty response content");
+        }
 
         // Clean markdown backticks and json
         let cleanJson = textResponse.replace(/^```json\s*/m, '').replace(/^```\s*$/m, '').trim();
@@ -37,9 +46,14 @@ export async function callGeminiStream(data: any): Promise<any> {
             cleanJson = match[0];
         }
 
-        return JSON.parse(cleanJson);
+        try {
+            return JSON.parse(cleanJson);
+        } catch (e) {
+            console.error("Failed to parse JSON. Raw text:", textResponse);
+            throw new Error("Invalid JSON format from AI");
+        }
     } catch (e: any) {
-        console.error("Gemini Error:", e.message);
+        console.error("callGeminiStream error:", e.message);
         throw e;
     }
 }

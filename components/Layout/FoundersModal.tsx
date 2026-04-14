@@ -29,7 +29,7 @@ export default function FoundersModal({ onClose, lang }: FoundersModalProps) {
             link: "https://www.mirkhadjayev.uz"
         },
         {
-            name: "Shoxboz Muxammedov",
+            name: "Shoxbos Muxammedov",
             handle: "@shahbos",
             initials: "MS",
             link: "https://t.me/shahbos"

@@ -84,7 +84,10 @@ Javob tili: ${targetLangName}
         };
 
         console.log("Calling Gemini API with model:", process.env.GEMINI_MODEL || 'default');
-        const resultJson = await callGeminiStream(data);
+        let resultJson = await callGeminiStream(data);
+        if (Array.isArray(resultJson) && resultJson.length > 0) {
+            resultJson = resultJson[0];
+        }
         console.log("Gemini response received successfully");
 
         // Check blacklist

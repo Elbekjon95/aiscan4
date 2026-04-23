@@ -181,7 +181,12 @@ Javobni FAQAT QUYIDAGI JSON FORMATIDA, istisnosiz ${targetLangName} tilida qayta
             }
         };
 
-        const resultJson = await callGeminiStream(data);
+        let resultJson = await callGeminiStream(data);
+
+        // Agar model ba'zan ob'ekt o'rniga array ichida ob'ekt qaytarsa:
+        if (Array.isArray(resultJson) && resultJson.length > 0) {
+            resultJson = resultJson[0];
+        }
 
         // Save to DB
         const newReq = await prisma.request.create({

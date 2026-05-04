@@ -5,31 +5,40 @@ import { cookies } from 'next/headers';
 import { sessionOptions, SessionData } from '@/lib/auth';
 
 export async function proxy(request: NextRequest) {
-  const res = NextResponse.next();
-  const session = await getIronSession<SessionData>(await cookies(), sessionOptions);
-
   const { pathname } = request.nextUrl;
-
+  
   // 1. Ochiq yo'nalishlar (Public paths)
   const isPublicPath = 
-    pathname === '/admin/login' || 
+    pathname === '/' ||
+    pathname === '/index.html' ||
+    pathname === '/admin/login' ||
     pathname.startsWith('/api/auth') ||
-    pathname.startsWith('/_next/') || 
-    pathname.startsWith('/assets/') || 
+    pathname.startsWith('/_next/') ||
+    pathname.startsWith('/assets/') ||
     pathname === '/favicon.ico' ||
     pathname === '/header_logo.png';
 
-  // 2. Agar foydalanuvchi tizimga kirmagan bo'lsa va yo'nalish ochiq bo'lmasa -> Loginga
+  console.log('--- PROXY REQUEST ---', { pathname, isPublicPath });
+
+  const session = await getIronSession<SessionData>(await cookies(), sessionOptions);
+
+  // /index.html ni / ga rewrite qilish
+  if (pathname === '/index.html') {
+    const url = new URL('/', request.url);
+    url.search = request.nextUrl.search;
+    return NextResponse.rewrite(url);
+  }
+
+  // 2. Agar foydalanvuchi tizimga kirmagan bo'lsa va yo'nalish ochiq bo'lmasa -> Loginga
   if (!session.isLoggedIn && !isPublicPath) {
     const loginUrl = new URL('/admin/login', request.url);
-    // Til va boshqa parametrlarni saqlab qolish
     request.nextUrl.searchParams.forEach((value, key) => {
       loginUrl.searchParams.set(key, value);
     });
     return NextResponse.redirect(loginUrl);
   }
 
-  // 3. Agar foylalanuvchi tizimga kirgan bo'lsa va login sahifasiga bormoqchi bo'lsa -> Panelga
+  // 3. Agar foylalanvuchi tizimga kirgan bo'lsa va login sahifasiga bormoqchi bo'lsa -> Panelga
   if (session.isLoggedIn && pathname === '/admin/login') {
     const adminUrl = new URL('/admin', request.url);
     request.nextUrl.searchParams.forEach((value, key) => {
@@ -43,9 +52,9 @@ export async function proxy(request: NextRequest) {
     await session.save();
   }
 
-  return res;
+  return NextResponse.next();
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|assets|favicon.ico|header_logo.png).*)'],
+  matcher: ['/:path*'],
 };

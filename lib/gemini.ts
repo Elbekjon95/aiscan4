@@ -2,29 +2,60 @@
 export const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 export const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.1-pro-preview';
 
-export async function callGeminiStream(data: any): Promise<any> {
+export async function callGeminiStream(data: any, returnText: boolean = false): Promise<any> {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
 
-    // Thinking modellari (gemini-3.1-pro-preview) uchun maxOutputTokens
-    // yetarlicha katta bo'lishi kerak — aks holda javob kesiladi va bo'sh qaytadi.
-    if (data.generationConfig) {
-        if (!data.generationConfig.maxOutputTokens || data.generationConfig.maxOutputTokens < 8192) {
-            data.generationConfig.maxOutputTokens = 16000;
+    // Generation configni har doim sozlaymiz
+    if (!data.generationConfig) {
+        data.generationConfig = {};
+    }
+    
+    // maxOutputTokens yetarlicha katta bo'lishi kerak (ayniqsa 10 ta firma uchun)
+    if (!data.generationConfig.maxOutputTokens || data.generationConfig.maxOutputTokens < 8192) {
+        data.generationConfig.maxOutputTokens = 8192; // Ko'pchilik modellar uchun barqaror chegara
+    }
+
+    let response;
+    let retries = 3;
+    let errorBody = "";
+
+    while (retries > 0) {
+        try {
+            response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data),
+            });
+
+            if (response.ok) {
+                break; // Muvaffaqiyatli
+            }
+
+            errorBody = await response.text();
+            
+            // Agar 503 High Demand bo'lsa, biroz kutib qayta urinamiz
+            if (response.status === 503) {
+                console.warn(`Gemini API 503 xatosi. Qayta urinish... Qolgan urinishlar: ${retries - 1}`);
+                retries--;
+                if (retries === 0) break;
+                await new Promise(r => setTimeout(r, 5000)); // 5 soniya kutish
+                continue;
+            }
+
+            // Boshqa xatoliklar uchun darhol to'xtaymiz
+            console.error(`Gemini API Error (Status ${response.status}):`, errorBody);
+            throw new Error(`Gemini API error: ${response.status} - ${errorBody.substring(0, 200)}`);
+        } catch (err: any) {
+            if (retries === 1 || err.message.includes("Gemini API error")) throw err;
+            console.warn(`Tarmoq xatosi (fetch): ${err.message}. Qayta urinish...`);
+            retries--;
+            await new Promise(r => setTimeout(r, 5000));
         }
     }
 
-    try {
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data),
-        });
-
-        if (!response.ok) {
-            const errorBody = await response.text();
-            console.error(`Gemini API Error (Status ${response.status}):`, errorBody);
-            throw new Error(`Gemini API error: ${response.status} - ${errorBody.substring(0, 200)}`);
-        }
+    if (!response || !response.ok) {
+        throw new Error(`Gemini API error (Max retries reached): ${response?.status} - ${errorBody.substring(0, 200)}`);
+    }
 
         const json = await response.json();
         let textResponse = "";
@@ -59,21 +90,37 @@ export async function callGeminiStream(data: any): Promise<any> {
             throw new Error(`Gemini empty response content (finishReason: ${finishReason})`);
         }
 
-        // Clean markdown backticks if model wraps JSON in ```json ... ```
-        let cleanJson = textResponse.replace(/^```json\s*/m, '').replace(/^```\s*$/m, '').trim();
-        const match = cleanJson.match(/\{[\s\S]*\}$/u);
-        if (match) {
-            cleanJson = match[0];
+        if (returnText) {
+            return textResponse;
+        }
+
+        let cleanJson = textResponse.trim();
+        if (cleanJson.startsWith('```')) {
+            cleanJson = cleanJson.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+        }
+        
+        const firstBrace = cleanJson.indexOf('{');
+        const firstBracket = cleanJson.indexOf('[');
+        let startIdx = Infinity;
+        let endIdx = -1;
+
+        if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+            startIdx = firstBrace;
+            endIdx = cleanJson.lastIndexOf('}');
+        } else if (firstBracket !== -1) {
+            startIdx = firstBracket;
+            endIdx = cleanJson.lastIndexOf(']');
+        }
+        
+        if (startIdx !== Infinity && endIdx !== -1 && endIdx >= startIdx) {
+            cleanJson = cleanJson.substring(startIdx, endIdx + 1);
         }
 
         try {
             return JSON.parse(cleanJson);
         } catch (e) {
             console.error("Failed to parse JSON. Raw text:", textResponse.substring(0, 500));
-            throw new Error("Invalid JSON format from AI");
+            try { require('fs').writeFileSync('gemini_error.log', textResponse); } catch(err) {}
+            throw new Error(`Invalid JSON format from AI. Qaytarilgan matn: AI javobi serverga (gemini_error.log) yozildi!`);
         }
-    } catch (e: any) {
-        console.error("callGeminiStream error:", e.message);
-        throw e;
-    }
 }

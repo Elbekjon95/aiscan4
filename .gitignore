@@ -44,3 +44,10 @@ ts.log
 next-env.d.ts
 
 /lib/generated/prisma
+
+# Logs and scratch files
+gemini_error.log
+scratch_*
+models_info.json
+get_models.mjs
+*.html

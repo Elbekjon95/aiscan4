@@ -81,6 +81,7 @@ model Request {
   affiliation_status String?
   full_analysis     Json?
   corrected_version String?
+  auditor_name      String?
   language          String       @default("uz")
   airport           String       @default("TAS")
   created_at        DateTime     @default(now())

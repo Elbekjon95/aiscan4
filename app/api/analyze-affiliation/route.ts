@@ -124,7 +124,7 @@ Format exactly like this JSON:
         const data = {
             contents: [{ role: "user", parts: allParts }],
             generationConfig: {
-                temperature: 0.5,
+                temperature: 0.0,
                 maxOutputTokens: 8192,
                 responseMimeType: "application/json"
             }
@@ -135,6 +135,14 @@ Format exactly like this JSON:
         const session = await getSession();
         const airport = session.airport || 'TAS';
 
+        let auditorName = '777';
+        if (session.userId) {
+            const user = await prisma.user.findUnique({ where: { id: session.userId } });
+            if (user) {
+                auditorName = user.role === 'super_admin' ? '777' : user.username;
+            }
+        }
+
         const fileNames = files.map(f => f.name).join(' | ');
         const newReq = await prisma.request.create({
             data: {
@@ -142,12 +150,13 @@ Format exactly like this JSON:
                 analysis_type: 'affiliation',
                 affiliation_status: resultJson.collusion_status || 'no_risk',
                 airport: airport,
+                auditor_name: auditorName,
                 language: lang,
                 full_analysis: resultJson
             }
         });
 
-        return NextResponse.json({ ...resultJson, success: true, request_id: newReq.id });
+        return NextResponse.json({ ...resultJson, success: true, request_id: newReq.id, auditor_name: auditorName });
 
     } catch (err: any) {
         console.error("Affiliation API error:", err);

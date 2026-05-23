@@ -38,6 +38,10 @@ export default function UsersManagement() {
         try {
             const resMe = await fetch('/api/auth/me');
             const dataMe = await resMe.json();
+            if (!dataMe.isLoggedIn || (dataMe.role !== 'admin' && dataMe.role !== 'super_admin')) {
+                window.location.href = `/admin/login?lang=${lang}`;
+                return;
+            }
             setMe(dataMe);
 
             const resAirports = await fetch('/api/admin/airports');

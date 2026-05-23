@@ -141,7 +141,7 @@ ${text.substring(0, 15000)}
             contents: [{ role: "user", parts: researchParts }],
             tools: [{ googleSearch: {} }], // Enable Internet Search
             generationConfig: {
-                temperature: 0.3,
+                temperature: 0.0,
                 maxOutputTokens: 8192
             }
         };
@@ -190,7 +190,7 @@ Javob tili: ${targetLangName}
         const formatData = {
             contents: [{ role: "user", parts: [{ text: formatPrompt }] }],
             generationConfig: {
-                temperature: 0.1,
+                temperature: 0.0,
                 maxOutputTokens: 8192,
                 responseMimeType: "application/json"
             }
@@ -255,7 +255,7 @@ ${orgsList}
             contents: [{ role: "user", parts: [{ text: factCheckPrompt }] }],
             tools: [{ googleSearch: {} }], // Enable Internet Search for Fact Checking
             generationConfig: {
-                temperature: 0.1,
+                temperature: 0.0,
                 maxOutputTokens: 2048
             }
         };
@@ -311,18 +311,27 @@ ${orgsList}
         const session = await getSession();
         const airport = session.airport || 'TAS';
 
+        let auditorName = '777';
+        if (session.userId) {
+            const user = await prisma.user.findUnique({ where: { id: session.userId } });
+            if (user) {
+                auditorName = user.role === 'super_admin' ? '777' : user.username;
+            }
+        }
+
         const newReq = await prisma.request.create({
             data: {
                 file_name: file.name,
                 file_type: fileExt,
                 analysis_type: 'marketing',
                 airport: airport,
+                auditor_name: auditorName,
                 language: lang,
                 full_analysis: finalJson
             }
         });
 
-        return NextResponse.json({ ...finalJson, success: true, request_id: newReq.id });
+        return NextResponse.json({ ...finalJson, success: true, request_id: newReq.id, auditor_name: auditorName });
 
     } catch (err: any) {
         console.error("Marketing API error:", err);

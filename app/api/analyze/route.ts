@@ -24,13 +24,16 @@ export async function POST(req: NextRequest) {
         const existing = await prisma.request.findFirst({ 
             where: {
                 file_hash: fileHash, 
+                file_name: file.name,
                 analysis_type: 'document',
                 language: lang 
             }
         });
         
         if (existing) {
-            return NextResponse.json({ ...(existing.full_analysis as any), success: true, is_cached: true, request_id: existing.id });
+            const cachedData = (existing.full_analysis as any) || {};
+            cachedData.corrected_version = existing.corrected_version || cachedData.optimized_version || cachedData.corrected_version;
+            return NextResponse.json({ ...cachedData, success: true, is_cached: true, request_id: existing.id });
         }
 
         // Extract Text
@@ -48,6 +51,14 @@ export async function POST(req: NextRequest) {
         
         const session = await getSession();
         const airport = session.airport || 'TAS';
+
+        let auditorName = '777';
+        if (session.userId) {
+            const user = await prisma.user.findUnique({ where: { id: session.userId } });
+            if (user) {
+                auditorName = user.role === 'super_admin' ? '777' : user.username;
+            }
+        }
 
         // Fetch Internal Docs Context (Global + Local)
         const internalDocs = await prisma.internalDoc.findMany({
@@ -67,6 +78,42 @@ export async function POST(req: NextRequest) {
             });
         }
 
+        // Check if there was a previous audit for a file with the same name (but different hash, otherwise cached check above would match)
+        const previousRequest = await prisma.request.findFirst({
+            where: {
+                file_name: file.name,
+                analysis_type: 'document',
+                language: lang,
+                airport: airport
+            },
+            orderBy: {
+                created_at: 'desc'
+            }
+        });
+
+        let previousFindingsContext = '';
+        if (previousRequest && previousRequest.full_analysis) {
+            const prev = previousRequest.full_analysis as any;
+            const prevRisks = prev.risks || [];
+            const prevEvidence = prev.favoritism_evidence || [];
+            const prevRecs = prev.recommendations || [];
+            
+            previousFindingsContext = `
+## HUJJATNING AVVALGI TAHLIL NATIJALARI (Ushbu kamchiliklar to'g'rilanganligini tekshiring):
+- Avvalgi umumiy ball: ${prev.total_score || 'Nomaʼlum'}
+- Avval aniqlangan xavflar:
+${prevRisks.map((r: string, idx: number) => `  ${idx + 1}. ${r}`).join('\n')}
+- Avval aniqlangan favoritizm alomatlari:
+${prevEvidence.map((e: any, idx: number) => `  ${idx + 1}. "${e.quote}": ${e.reason} (${e.severity})`).join('\n')}
+- Berilgan tavsiyalar:
+${prevRecs.map((rec: string, idx: number) => `  ${idx + 1}. ${rec}`).join('\n')}
+
+DIQQAT: Foydalanuvchi ushbu kamchiliklarni bartaraf qilish maqsadida hujjatni qayta tahrirlagan va yuklagan.
+Sizning vazifangiz — faqat yuqorida ko'rsatilgan xavflar va favoritizm alomatlari bartaraf qilinganligini tekshirish.
+Agar foydalanuvchi ularni to'g'rilagan bo'lsa, ularni qaytadan xato deb ko'rsatmang, hujjatning bahosini sezilarli darajada (loyihani maqtash darajasida, 90-100 ballgacha) oshiring hamda favoritizmni "none" (aniqlanmadi) deb belgilang. Yangi va kichik nuqsonlarni qidirmang.
+`;
+        }
+
         const targetLangName = lang === 'uz' ? "O'zbek tili" : (lang === 'ru' ? "Rus tili" : "Ingliz tili");
         
         // Dynamic Section Titles based on language
@@ -78,9 +125,22 @@ export async function POST(req: NextRequest) {
 # SYSTEM INSTRUCTION: AISCAN - PROFESSIONAL PROCUREMENT COMPLIANCE AUDIT SYSTEM
 
 Siz — AISCAN, O'zbekiston Respublikasi davlat va korporativ xaridlari bo'yicha eng yuqori darajadagi OB'YEKTIV, PRAGMATIK va KASBIY avtomatlashtirilgan ekspert-auditorsiz. 
-Sizning maqsadingiz: Ochiq raqobatni ta'minlash bilan birga, Buyurtmachining mavjud infratuzilmasi xavfsizligi va barqarorligini hurmat qilish. Hujjatdagi har bir shubhali holatni tahlil qiling, ammo asossiz ayblovlardan saqlaning.
+Sizning maqsadingiz: Ochiq raqobatni ta'minlash bilan birga, Buyurtmachining mavjud infratuzilmasi xavfsizligi va barqarorligini hurmat qilish. Hujjatdagi har bir shubhali holatni tahlil qiling, ammo asossiz ayblovlardan saqlaning. Tahlil ohangini asossiz ayblovchi yoki agressiv emas, balki xatolarni to'g'rilashda yordam beruvchi konstruktiv, do'stona va professional maslahatchi ko'rinishida shakllantiring.
 
-## 1. NORMATIV BAZA (SIZNING BILIMLARINGIZ)
+## 1. AUDIT QAT'IYLIGI VA XAVF TIZIMI (MUHIM MUVOZANAT)
+- **MUROSASIZ QAT'IY CHEKLOVLAR (CRITICAL VIOLATIONS):** Qonunni chetlab o'tish yoki korrupsion xavflarning oldini olish uchun quyidagilarni o'ta qattiq tekshiring:
+  1. Affillanganlik (o'zaro bog'liqlik) va manfaatlar to'qnashuvi.
+  2. Bir ishtirokchiga asossiz yon bosish (favoritizm), uning manfaatlarini ko'zlab to'g'ridan-to'g'ri o'xshashi yo'q monopol shartlar yozish.
+  3. Narxlarni sun'iy va asossiz shishirish yoki asossiz yuqori baholash.
+  4. Qonun doirasida taqiqlangan yuridik va ma'muriy cheklovlar.
+  Bunday jiddiy holatlar aniqlansa, baholarni (compliance_score va favoritism_score) murosasiz ravishda pasaytiring va favoritism_evidence dagi xavf darajasini "critical" deb belgilang!
+- **YUMSHOQ VA TAVSIYAVIY TALABLAR (MINOR TECHNICAL CLAUSES):** Qonuniy to'siq bo'lmaydigan va faqat operatsion/texnik sifatni oshirishga qaratilgan mayda mezonlarni yumshoq va konstruktiv audittan o'tkazing:
+  1. Imlo yoki matn formatlash xatoliklari.
+  2. Boshqa ishtirokchilarga xalaqit bermaydigan, raqobatni cheklamaydigan ikkinchi darajali mayda texnik tafsilotlar.
+  3. Asoslangan integratsiya talablari (mavjud infratuzilmaga texnik moslik).
+  Bunday mayda bandlar uchun jazo ballari bermang, balki ularni faqat tavsiya (advisory) yoki maslahat ko'rinishida taqdim eting.
+
+## 2. NORMATIV BAZA (SIZNING BILIMLARINGIZ)
 Tahlilni FAQAT O'zbekiston Respublikasi qonunchiligi prizmasidan o'tkazing:
 1. O'zR "Davlat xaridlari to'g'risida"gi Qonuni.
 2. O'zR Byudjet kodeksi.
@@ -90,14 +150,17 @@ Tahlilni FAQAT O'zbekiston Respublikasi qonunchiligi prizmasidan o'tkazing:
 
 ${docsContext ? docsContext : ''}
 
+${previousFindingsContext ? previousFindingsContext : ''}
+
+
 HUJJAT MATNI:
 ${cleanedText || '[Matn ajratib olinmadi, ilova qilingan PDF ga qarang]'}
 
 ## 2. AUDIT VAZIFALARI (TASKS) - TIZIMLI TAHLIL QOIDALARI
 Siz ushbu vazifalarni HUJJATNING HAR BIR BANDI bo'yicha bajarishingiz shart:
 
-### VAZIFA №1: TEXNIK VA HUQUQIY AUDIT (Murosasiz, lekin aqlli)
-- Har bir texnik talabni tahlil qiling. Agar o'lchamlar, og'irlik yoki spetsifikatsiyalar asossiz ravishda o'ta aniq ko'rsatilgan bo'lsa (masalan, millimetrgacha) va faqat bitta brendga mos kelsa, buni raqobatni cheklash deb baholang (O'zR "Davlat xaridlari to'g'risida"gi Qonuni-684, 46-modda).
+### VAZIFA №1: TEXNIK VA HUQUQIY AUDIT (Konstruktiv va aqlli)
+- Har bir texnik talabni tahlil qiling. Agar o'lchamlar, og'irlik yoki spetsifikatsiyalar asossiz ravishda o'ta aniq ko'rsatilgan bo'lsa (masalan, millimetrgacha) va faqat bitta brendga mos kelsa, buni potentsial raqobatni cheklash xavfi deb baholang. Agar bu talablar asossiz bo'lmasa yoki kichik texnik tafsilotlar bo'lsa, ularni xavf deb belgilamang va jazo ballari bermang.
 - MUHIM ISTISNO: Agar Buyurtmachi hujjatda "mavjud dasturiy-apparat majmuasi bilan integratsiya qilish" (nativ moslik) zaruratini asoslagan bo'lsa, bu texnik ehtiyoj hisoblanadi. Bunday holatda raqobatni cheklash haqida xulosa qilishdan oldin, integratsiya talabi qanchalik mantiqiy ekanligini baholang.
 
 ### VAZIFA №2: NARX VA SAMARADORLIK AUDITI (Faqat faktlar asosida)
@@ -107,7 +170,7 @@ Siz ushbu vazifalarni HUJJATNING HAR BIR BANDI bo'yicha bajarishingiz shart:
 - Hujjatdagi yuridik yoki raqamli izlarni (telefon, manzil, xos ismlar, domenlar) qidiring. DIQQAT: Agar ishtirokchilarning ma'lumotlari (tijorat takliflari) hali yuklanmagan bo'lsa, afilovlik haqida xulosa bermang, faqat potentsial xatarlarni ko'rsating.
 
 ## 3. CHIQISH FORMATI (JSON)
-Javobni FAQAT QUYIDAGI JSON FORMATIDA, istisnosiz ${targetLangName} tilida qaytaring. Javob maksimal darajada batafsil va "sinchkov" bo'lishi kerak:
+Javobni FAQAT QUYIDAGI JSON FORMATIDA, istisnosiz ${targetLangName} tilida qaytaring. Javob maksimal darajada batafsil bo'lishi kerak:
 
 {
   "document_title": "Hujjatning matn ichidagi rasmiy nomi (masalan: Texnik topshiriq №123)",
@@ -173,7 +236,7 @@ Javobni FAQAT QUYIDAGI JSON FORMATIDA, istisnosiz ${targetLangName} tilida qayta
         const data = {
             contents: [{ role: "user", parts: allParts }],
             generationConfig: {
-                temperature: 0.2,
+                temperature: 0.0,
                 maxOutputTokens: 8192,
                 responseMimeType: "application/json"
             }
@@ -198,6 +261,7 @@ Javobni FAQAT QUYIDAGI JSON FORMATIDA, istisnosiz ${targetLangName} tilida qayta
                 analysis_type: 'document',
                 language: lang,
                 airport: airport,
+                auditor_name: auditorName,
                 corrected_version: resultJson.optimized_version || null,
                 full_analysis: resultJson
             }
@@ -208,7 +272,8 @@ Javobni FAQAT QUYIDAGI JSON FORMATIDA, istisnosiz ${targetLangName} tilida qayta
             corrected_version: resultJson.optimized_version, 
             success: true, 
             request_id: newReq.id,
-            file_name: file.name
+            file_name: file.name,
+            auditor_name: auditorName
         });
 
     } catch (err: any) {

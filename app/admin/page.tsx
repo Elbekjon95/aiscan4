@@ -7,13 +7,18 @@ import Link from 'next/link';
 import { FileText, Network, ShoppingCart, Eye, BarChart3, Activity } from 'lucide-react';
 import ChartComponent from './ChartComponent'; // Client side chart component
 import { AnalysisType } from '@prisma/client';
+import { redirect } from 'next/navigation';
 
 export default async function AdminDashboard({ searchParams }: { searchParams: { tab?: string, page?: string, lang?: string, airport?: string } }) {
     const session = await getSession();
     const sParams = await searchParams;
+    const lang = sParams.lang || 'uz';
+
+    if (!session.isLoggedIn || (session.role !== 'admin' && session.role !== 'super_admin')) {
+        redirect(`/admin/login?lang=${lang}`);
+    }
     const tabString = sParams.tab || 'document';
     const pageStr = sParams.page || '1';
-    const lang = sParams.lang || 'uz';
     const selectedAirport = sParams.airport || '';
 
     const page = parseInt(pageStr, 10);
@@ -169,13 +174,13 @@ export default async function AdminDashboard({ searchParams }: { searchParams: {
                 )}
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: session.role === 'super_admin' && !selectedAirport ? '2fr 1fr' : '1fr', gap: '2rem', marginTop: '2rem' }}>
+            <div className={`dashboard-grid ${session.role === 'super_admin' && !selectedAirport ? 'two-cols' : ''}`}>
                 <div className="chart-container" style={{ background: 'var(--card-bg)', borderRadius: '1.5rem', padding: '2rem', border: '1px solid var(--glass-border)' }}>
                     <ChartComponent labels={Object.keys(monthlyStats)} data={Object.values(monthlyStats)} chartTitle={getTranslation(lang, 'chart_monthly')} />
                 </div>
 
                 {session.role === 'super_admin' && !selectedAirport && (
-                    <div style={{ background: 'var(--card-bg)', borderRadius: '1.5rem', padding: '2rem', border: '1px solid var(--glass-border)' }}>
+                    <div style={{ background: 'var(--card-bg)', borderRadius: '1.5rem', padding: '2rem', border: '1px solid var(--glass-border)', minWidth: 0 }}>
                         <h3 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Activity size={20} /> Aeroportlar Aktivligi</h3>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                             {airportActivity.slice(0, 5).map((act: any) => (
@@ -198,6 +203,7 @@ export default async function AdminDashboard({ searchParams }: { searchParams: {
                         <tr>
                             <th style={{ padding: '1.2rem', textAlign: 'left', borderBottom: '1px solid var(--glass-border)', color: 'var(--text-muted)' }}>{getTranslation(lang, 'table_file')}</th>
                             <th style={{ padding: '1.2rem', textAlign: 'left', borderBottom: '1px solid var(--glass-border)', color: 'var(--text-muted)' }}>Aeroport</th>
+                            <th style={{ padding: '1.2rem', textAlign: 'left', borderBottom: '1px solid var(--glass-border)', color: 'var(--text-muted)' }}>Auditor</th>
                             {tabString === 'document' && (
                                 <>
                                     <th style={{ padding: '1.2rem', textAlign: 'left', borderBottom: '1px solid var(--glass-border)', color: 'var(--text-muted)' }}>{getTranslation(lang, 'table_score')}</th>
@@ -234,6 +240,7 @@ export default async function AdminDashboard({ searchParams }: { searchParams: {
                                 <tr key={row.id}>
                                     <td style={{ padding: '1.2rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>{fileName}</td>
                                     <td style={{ padding: '1.2rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}><span className="badge secondary">{row.airport || 'TAS'}</span></td>
+                                    <td style={{ padding: '1.2rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>{row.auditor_name || '777'}</td>
                                     {tabString === 'document' && (
                                         <>
                                             <td style={{ padding: '1.2rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}><span className="badge success">{row.analysis_score}%</span></td>

@@ -23,8 +23,21 @@ export default function AirportsManagement() {
     });
 
     useEffect(() => {
-        fetchAirports();
-    }, []);
+        const checkAuth = async () => {
+            try {
+                const res = await fetch('/api/auth/me');
+                const data = await res.json();
+                if (!data.isLoggedIn || (data.role !== 'admin' && data.role !== 'super_admin')) {
+                    window.location.href = `/admin/login?lang=${lang}`;
+                } else {
+                    fetchAirports();
+                }
+            } catch (err) {
+                window.location.href = `/admin/login?lang=${lang}`;
+            }
+        };
+        checkAuth();
+    }, [lang]);
 
     const fetchAirports = async () => {
         try {

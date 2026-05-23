@@ -22,8 +22,21 @@ export default function DocsManagement() {
     });
 
     useEffect(() => {
-        fetchDocs();
-    }, []);
+        const checkAuth = async () => {
+            try {
+                const res = await fetch('/api/auth/me');
+                const data = await res.json();
+                if (!data.isLoggedIn || (data.role !== 'admin' && data.role !== 'super_admin')) {
+                    window.location.href = `/admin/login?lang=${lang}`;
+                } else {
+                    fetchDocs();
+                }
+            } catch (err) {
+                window.location.href = `/admin/login?lang=${lang}`;
+            }
+        };
+        checkAuth();
+    }, [lang]);
 
     const fetchDocs = async () => {
         try {

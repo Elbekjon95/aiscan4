@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { getTranslation } from '@/lib/translations';
-import { FileText, Network, ShoppingCart, LogIn, LogOut, LayoutDashboard } from 'lucide-react';
+import { FileText, Network, ShoppingCart, LogIn, LogOut, LayoutDashboard, User } from 'lucide-react';
 
 interface NavbarProps {
     isAdmin?: boolean;
@@ -39,6 +39,23 @@ export default function Navbar({ isAdmin = false, isLoggedIn = false, role }: Na
 
     const isCurrent = (path: string) => pathname === path;
 
+    const [userName, setUserName] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (isLoggedIn || isAdmin) {
+            fetch('/api/auth/me')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.isLoggedIn) {
+                        setUserName(data.username || (data.role === 'super_admin' ? '777' : 'Auditor'));
+                    }
+                })
+                .catch(err => console.error("Error loading user name:", err));
+        } else {
+            setUserName(null);
+        }
+    }, [isLoggedIn, isAdmin]);
+
     return (
         <nav>
             <div className="logo" style={{ cursor: 'pointer' }} onClick={() => router.push(`/?lang=${lang}`)}>
@@ -62,24 +79,32 @@ export default function Navbar({ isAdmin = false, isLoggedIn = false, role }: Na
                                 <Link href={`/admin/docs?lang=${lang}`} className={isCurrent('/admin/docs') ? 'active' : ''}>{getTranslation(lang, 'nav_docs')}</Link>
                                 <Link href={`/admin/users?lang=${lang}`} className={isCurrent('/admin/users') ? 'active' : ''}>{getTranslation(lang, 'nav_users')}</Link>
                                 {role === 'super_admin' && (
-                                    <Link href={`/admin/airports?lang=${lang}`} className={isCurrent('/admin/airports') ? 'active' : ''}>Aeroportlar</Link>
+                                    <Link href={`/admin/airports?lang=${lang}`} className={isCurrent('/admin/airports') ? 'active' : ''}>{getTranslation(lang, 'nav_airports')}</Link>
                                 )}
                                 <Link href={`/admin/blacklist?lang=${lang}`} className={isCurrent('/admin/blacklist') ? 'active' : ''}>{getTranslation(lang, 'nav_blacklist')}</Link>
                             </>
                         )}
                         <Link href={`/?lang=${lang}`}>{getTranslation(lang, 'nav_site')}</Link>
                         {isLoggedIn || isAdmin ? (
-                            <button 
-                                type="button" 
-                                onClick={async () => {
-                                    await fetch('/api/auth/logout', { method: 'POST' });
-                                    window.location.href = `/admin/login?lang=${lang}`;
-                                }}
-                                style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}
-                            >
-                                <LogOut size={18} />
-                                {getTranslation(lang, 'nav_logout')}
-                            </button>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                                {userName && (
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--secondary)', fontWeight: 600, fontSize: '0.9rem', marginRight: '6px' }}>
+                                        <User size={18} />
+                                        {userName}
+                                    </span>
+                                )}
+                                <button 
+                                    type="button" 
+                                    onClick={async () => {
+                                        await fetch('/api/auth/logout', { method: 'POST' });
+                                        window.location.href = `/admin/login?lang=${lang}`;
+                                    }}
+                                    style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}
+                                >
+                                    <LogOut size={18} />
+                                    {getTranslation(lang, 'nav_logout')}
+                                </button>
+                            </div>
                         ) : (
                             <Link href={`/admin/login?lang=${lang}`} style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                 <LogIn size={18} />
@@ -97,7 +122,7 @@ export default function Navbar({ isAdmin = false, isLoggedIn = false, role }: Na
                         )}
                         <Link href={`/?lang=${lang}`} className={isCurrent('/') ? 'active' : ''}>
                             <FileText size={18} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />
-                            Hujjatlar
+                            {getTranslation(lang, 'nav_docs')}
                         </Link>
                         <Link href={`/affiliation?lang=${lang}`} className={isCurrent('/affiliation') ? 'active' : ''}>
                             <Network size={18} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />
@@ -108,17 +133,25 @@ export default function Navbar({ isAdmin = false, isLoggedIn = false, role }: Na
                             {getTranslation(lang, 'nav_marketing')}
                         </Link>
                         {isLoggedIn || isAdmin ? (
-                            <button 
-                                type="button" 
-                                onClick={async () => {
-                                    await fetch('/api/auth/logout', { method: 'POST' });
-                                    window.location.href = `/admin/login?lang=${lang}`;
-                                }}
-                                style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}
-                            >
-                                <LogOut size={18} />
-                                {getTranslation(lang, 'nav_logout')}
-                            </button>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                                {userName && (
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--secondary)', fontWeight: 600, fontSize: '0.9rem', marginRight: '6px' }}>
+                                        <User size={18} />
+                                        {userName}
+                                    </span>
+                                )}
+                                <button 
+                                    type="button" 
+                                    onClick={async () => {
+                                        await fetch('/api/auth/logout', { method: 'POST' });
+                                        window.location.href = `/admin/login?lang=${lang}`;
+                                    }}
+                                    style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}
+                                >
+                                    <LogOut size={18} />
+                                    {getTranslation(lang, 'nav_logout')}
+                                </button>
+                            </div>
                         ) : (
                             <Link href={`/admin/login?lang=${lang}`} style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                 <LogIn size={18} />

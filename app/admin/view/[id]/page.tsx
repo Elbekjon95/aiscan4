@@ -4,11 +4,18 @@ import { getTranslation } from '@/lib/translations';
 import AnalysisResults from '@/components/Analysis/AnalysisResults';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
+import { getSession } from '@/lib/auth';
+import { redirect } from 'next/navigation';
 
 export default async function AdminViewPage({ params, searchParams }: { params: { id: string }, searchParams: { lang?: string } }) {
     const sParams = await searchParams;
     const { id } = await params;
     const lang = sParams.lang || 'uz';
+
+    const session = await getSession();
+    if (!session.isLoggedIn || (session.role !== 'admin' && session.role !== 'super_admin')) {
+        redirect(`/admin/login?lang=${lang}`);
+    }
 
     const reqData = await prisma.request.findUnique({
         where: { id }
@@ -19,6 +26,8 @@ export default async function AdminViewPage({ params, searchParams }: { params: 
     }
 
     const data: any = reqData.full_analysis || {};
+    data.corrected_version = reqData.corrected_version || data.optimized_version || data.corrected_version;
+    data.auditor_name = reqData.auditor_name || '777';
 
     return (
         <div className="view-container" style={{ maxWidth: '1300px', margin: '3rem auto', padding: '0 5%' }}>
@@ -30,7 +39,7 @@ export default async function AdminViewPage({ params, searchParams }: { params: 
 
             <div className="view-header" style={{ marginBottom: '2rem', borderBottom: '1px solid var(--glass-border)', paddingBottom: '1rem' }}>
                 <h2 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>{lang === 'en' ? 'Document' : (lang === 'ru' ? 'Документ' : 'Hujjat')}: {reqData.file_name}</h2>
-                <p style={{ color: 'var(--text-muted)' }}>{lang === 'en' ? 'Analysis date' : (lang === 'ru' ? 'Дата анализа' : 'Tahlil sanasi')}: {new Date(reqData.created_at).toLocaleString()} • ID: #{id}</p>
+                <p style={{ color: 'var(--text-muted)' }}>{lang === 'en' ? 'Analysis date' : (lang === 'ru' ? 'Дата анализа' : 'Tahlil sanasi')}: {new Date(reqData.created_at).toLocaleString()} • ID: #{id} • Auditor: {reqData.auditor_name || '777'}</p>
             </div>
 
             <div id="analysis-grid">

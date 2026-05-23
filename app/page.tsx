@@ -25,11 +25,17 @@ export default function Home() {
             try {
                 const res = await fetch('/api/auth/me');
                 const data = await res.json();
-                if (data.isLoggedIn) setMe(data);
-            } catch (err) {}
+                if (data.isLoggedIn) {
+                    setMe(data);
+                } else {
+                    window.location.href = `/admin/login?lang=${lang}`;
+                }
+            } catch (err) {
+                window.location.href = `/admin/login?lang=${lang}`;
+            }
         };
         fetchMe();
-    }, []);
+    }, [lang]);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {

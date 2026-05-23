@@ -63,6 +63,9 @@ export default function AnalysisResults({ data, lang }: { data: any, lang: strin
                     <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                         {getTranslation(lang, 'table_file')}: {data.file_name}
                     </p>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.2rem' }}>
+                        Auditor: <strong style={{ color: 'white' }}>{data.auditor_name || '777'}</strong>
+                    </p>
                 </div>
             </div>
 
@@ -85,7 +88,7 @@ export default function AnalysisResults({ data, lang }: { data: any, lang: strin
             )}
 
             {/* Optimized Version Button */}
-            {data.corrected_version && (
+            {(data.corrected_version || data.optimized_version) && (
                 <div style={{ gridColumn: '1 / -1', marginBottom: '2rem' }}>
                     <button 
                         onClick={() => setShowOptimized(true)}
@@ -110,7 +113,7 @@ export default function AnalysisResults({ data, lang }: { data: any, lang: strin
                             {getTranslation(lang, 'modal_optimized_title')}
                         </h2>
                         <div style={{ background: 'rgba(255,255,255,0.05)', padding: '2rem', borderRadius: '1rem', whiteSpace: 'pre-wrap', lineHeight: '1.8', color: '#e2e8f0', fontSize: '1.1rem' }}>
-                            {data.corrected_version}
+                            {data.corrected_version || data.optimized_version}
                         </div>
                         <div style={{ marginTop: '2rem', textAlign: 'center' }}>
                             <button className="btn btn-secondary" onClick={() => setShowOptimized(false)}>{getTranslation(lang, 'modal_close')}</button>

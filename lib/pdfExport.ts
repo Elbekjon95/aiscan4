@@ -72,6 +72,9 @@ export const exportToPDF = async (data: any, lang: string) => {
   const shortId = data.request_id ? String(data.request_id).substring(0, 10).toUpperCase() : 'N/A';
   doc.text(`ID: #${shortId}`, pageWidth - 15, 27, { align: 'right' });
 
+  const auditorName = data.auditor_name || '777';
+  doc.text(`Auditor: ${auditorName}`, pageWidth - 15, 34, { align: 'right' });
+
   // --- MAIN TITLE ---
   doc.setTextColor(30, 41, 59);
   doc.setFontSize(16);

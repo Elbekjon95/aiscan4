@@ -107,6 +107,7 @@ nav {
     font-size: 1.5rem;
     font-weight: 700;
     letter-spacing: -0.5px;
+    flex-shrink: 0;
 }
 
 .logo i {
@@ -115,8 +116,9 @@ nav {
 
 .nav-links {
     display: flex;
-    gap: 2.5rem;
+    gap: 1.5rem;
     align-items: center;
+    flex-shrink: 0;
 }
 
 .nav-links a {
@@ -572,6 +574,15 @@ footer {
 .color-secondary { color: var(--secondary); }
 
 /* Responsive */
+@media screen and (min-width: 769px) and (max-width: 1250px) {
+    .nav-links {
+        gap: 1rem;
+    }
+    nav {
+        padding: 1.5rem 3%;
+    }
+}
+
 @media screen and (max-width: 768px) {
     nav {
         flex-direction: column;
@@ -872,3 +883,28 @@ footer {
 .input-group:focus-within .form-label {
     color: var(--primary);
 }
+
+/* Responsive Grid for Admin Dashboard */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 2rem;
+    width: 100%;
+}
+
+.chart-container {
+    min-width: 0;
+    width: 100%;
+    overflow: hidden;
+}
+
+.chart-container canvas {
+    max-width: 100% !important;
+}
+
+@media screen and (min-width: 1024px) {
+    .dashboard-grid.two-cols {
+        grid-template-columns: 2fr 1fr;
+    }
+}
+

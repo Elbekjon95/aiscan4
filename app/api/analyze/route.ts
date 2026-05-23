@@ -72,20 +72,20 @@ export async function POST(req: NextRequest) {
         // Dynamic Section Titles based on language
         const tSummary = lang === 'uz' ? "Boshqaruv xulosasi (Meticulous Summary)" : (lang === 'ru' ? "Управленческое резюме (Тщательный аудит)" : "Executive Summary (Meticulous Audit)");
         const tAudit = lang === 'uz' ? "Har bir band bo'yicha Texnik-Huquqiy Audit" : (lang === 'ru' ? "Технико-юридический аудит по каждому пункту" : "Point-by-point Technical and Legal Audit");
-        const tPricing = lang === 'uz' ? "Hujjatdagi Narx va Sifat tahlili" : (lang === 'ru' ? "Анализ цен va Sifat tahlili" : "Price and Quality Analysis in the Document");
+        const tPricing = lang === 'uz' ? "Hujjatdagi Narx va Sifat tahlili" : (lang === 'ru' ? "Анализ цен и качества в документе" : "Price and Quality Analysis in the Document");
 
         const prompt = `
 # SYSTEM INSTRUCTION: AISCAN - PROFESSIONAL PROCUREMENT COMPLIANCE AUDIT SYSTEM
 
-Siz — AISCAN, O'zbekiston Respublikasi davlat va korporativ xaridlari bo'yicha eng yuqori darajadagi SHAFQATSIZ va SINCHKOV professional avtomatlashtirilgan ekspert-auditorsiz. 
-Sizning uslubingiz: Har bir so'z, har bir vergul va har bir raqam ostida yashirin korrupsiya yoki favoritizmni topish.
+Siz — AISCAN, O'zbekiston Respublikasi davlat va korporativ xaridlari bo'yicha eng yuqori darajadagi OB'YEKTIV, PRAGMATIK va KASBIY avtomatlashtirilgan ekspert-auditorsiz. 
+Sizning maqsadingiz: Ochiq raqobatni ta'minlash bilan birga, Buyurtmachining mavjud infratuzilmasi xavfsizligi va barqarorligini hurmat qilish. Hujjatdagi har bir shubhali holatni tahlil qiling, ammo asossiz ayblovlardan saqlaning.
 
 ## 1. NORMATIV BAZA (SIZNING BILIMLARINGIZ)
 Tahlilni FAQAT O'zbekiston Respublikasi qonunchiligi prizmasidan o'tkazing:
 1. O'zR "Davlat xaridlari to'g'risida"gi Qonuni.
 2. O'zR Byudjet kodeksi.
-3. O'zR "Korrupsiyaga qarshi kurashish to'g'risida"gi Qonuni: Manfaatlar to'qnashuvi.
-4. O'zR "Raqobat to'g'risida"gi Qonuni: Bozor monopoliyasini taqiqlash.
+3. O'zR "Korrupsiyaga qarshi kurashish to'g'risida"gi Qonuni.
+4. O'zR "Raqobat to'g'risida"gi Qonuni.
 5. Vazirlar Mahkamasi qarorlari (O'zR).
 
 ${docsContext ? docsContext : ''}
@@ -93,20 +93,18 @@ ${docsContext ? docsContext : ''}
 HUJJAT MATNI:
 ${cleanedText || '[Matn ajratib olinmadi, ilova qilingan PDF ga qarang]'}
 
-## 2. AUDIT VAZIFALARI (TASKS) - SINCHKOV TAHLIL QOIDALARI
-Siz ushbu vazifalarni HUJJATNING HAR BIR BANDI (CLAUSE-BY-CLAUSE) BO'YICHA bajarishingiz shart. Birorta ham bandni yoki talabni e'tibordan chetda qoldirmang!
+## 2. AUDIT VAZIFALARI (TASKS) - TIZIMLI TAHLIL QOIDALARI
+Siz ushbu vazifalarni HUJJATNING HAR BIR BANDI bo'yicha bajarishingiz shart:
 
-### VAZIFA №1: HAR BIR BANDNING TEXNIK VA HUQUQUY AUDITI
-- Har bir texnik talabni (Point-by-point) tahlil qiling. 
-- Agar talab bitta Brendga (masalan: Samsung, HP, Cisco) mos bo'lsa yoki boshqa ishtirokchilarni asossiz chehlasa, buni QAT'IY qayd eting.
-- Har bir qonunbuzarlik uchun tegishli Qonun va Moddani ko'rsating.
+### VAZIFA №1: TEXNIK VA HUQUQIY AUDIT (Murosasiz, lekin aqlli)
+- Har bir texnik talabni tahlil qiling. Agar o'lchamlar, og'irlik yoki spetsifikatsiyalar asossiz ravishda o'ta aniq ko'rsatilgan bo'lsa (masalan, millimetrgacha) va faqat bitta brendga mos kelsa, buni raqobatni cheklash deb baholang (O'zR "Davlat xaridlari to'g'risida"gi Qonuni-684, 46-modda).
+- MUHIM ISTISNO: Agar Buyurtmachi hujjatda "mavjud dasturiy-apparat majmuasi bilan integratsiya qilish" (nativ moslik) zaruratini asoslagan bo'lsa, bu texnik ehtiyoj hisoblanadi. Bunday holatda raqobatni cheklash haqida xulosa qilishdan oldin, integratsiya talabi qanchalik mantiqiy ekanligini baholang.
 
-### VAZIFA №2: NARX VA SAMARADORLIK AUDITI (PER ITEM)
-- Har bir mahsulot yoki xizmat narxini O'zbekiston bozoridagi o'rtacha ko'rsatkichlar bilan sinchkovlik bilan solishtiring.
-- Davlat mablag'larining har bir so'mi samarali sarflanayotganini tekshiring.
+### VAZIFA №2: NARX VA SAMARADORLIK AUDITI (Faqat faktlar asosida)
+- Taqdim etilgan narxlarni tahlil qiling. DIQQAT: Agar hujjatda narxlar yoki byudjet ko'rsatilmagan bo'lsa, narxlarni o'zingiz to'qib chiqarmang (gallyutsinatsiya qilmang)! Faqat "Narxlar taqdim etilmaganligi sababli audit qilish imkonsiz" deb belgilang.
 
-### VAZIFA №3: KOMPLAYENS VA AFILOVLIK (HIDDEN PATTERNS)
-- Hujjatdagi har bir yuridik yoki raqamli izni (telefon raqamlari, manzil, e-mail) qidirib, yashirin kelishuvlar ehtimolini eng kichik detallarigacha tahlil qiling.
+### VAZIFA №3: KOMPLAYENS VA AFILOVLIK (Yashirin xatarlar)
+- Hujjatdagi yuridik yoki raqamli izlarni (telefon, manzil, xos ismlar, domenlar) qidiring. DIQQAT: Agar ishtirokchilarning ma'lumotlari (tijorat takliflari) hali yuklanmagan bo'lsa, afilovlik haqida xulosa bermang, faqat potentsial xatarlarni ko'rsating.
 
 ## 3. CHIQISH FORMATI (JSON)
 Javobni FAQAT QUYIDAGI JSON FORMATIDA, istisnosiz ${targetLangName} tilida qaytaring. Javob maksimal darajada batafsil va "sinchkov" bo'lishi kerak:
@@ -115,7 +113,7 @@ Javobni FAQAT QUYIDAGI JSON FORMATIDA, istisnosiz ${targetLangName} tilida qayta
   "document_title": "Hujjatning matn ichidagi rasmiy nomi (masalan: Texnik topshiriq №123)",
   "total_score": 0-100 (Audit umumiy bahosi),
   "compliance_score": Qonunchilikka mosligi (0-100),
-  "favoritism_score": 0-100 (Loyiha necha foiz "halol" yozilgan),
+  "favoritism_score": 0-100 (Loyiha necha foiz \"halol\" yozilgan),
   "favoritism_verdict": "none", "suspected", yoki "confirmed",
   "favoritism_evidence": [
      {

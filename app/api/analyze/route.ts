@@ -70,10 +70,12 @@ export async function POST(req: NextRequest) {
         }
 
         // DOCX uchun HTML formatdagi matn ishlatamiz (jadvallar, ro'yxatlar saqlanadi)
-        // PDF uchun oddiy matn qoladi (PDF o'zi inline sifatida yuboriladi)
+        // PDF uchun oddiy matn qoladi (PDF o'zi inline sifatida to'liq yuboriladi)
+        // Gemini 3.1 Pro 1M token kontekstni qo'llab-quvvatlaydi (~800K belgi)
+        // 50-100 varoqli hujjatlarni ham to'liq o'qish uchun chegara kengaytirildi
         const geminiText = (fileExt === 'docx' && originalHtml) 
-            ? originalHtml.substring(0, 120000) 
-            : text.substring(0, 100000);
+            ? originalHtml.substring(0, 800000) 
+            : text.substring(0, 500000);
         const isHtmlFormat = fileExt === 'docx' && !!originalHtml;
         
         const session = await getSession();

@@ -132,7 +132,7 @@ VAZIFA:
 Quyidagi Text formatida erkin, lekin iloji boricha ko'p va ANIQ ma'lumot qidirib yozing (Hali JSON kerak emas, tahliliy qoralama tayyorlang):
 
 TEKNIK TALAB MATNI:
-${text.substring(0, 15000)}
+${text.substring(0, 500000)}
 `;
 
         const researchParts: any[] = [{ text: researchPrompt }];

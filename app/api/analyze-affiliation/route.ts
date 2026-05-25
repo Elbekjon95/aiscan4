@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
             allFilesData.push({
                 name: file.name,
                 type: fileExt,
-                text: text.substring(0, 10000), // Max 10k chars
+                text: text.substring(0, 200000), // Har bir fayl uchun 200K belgi — to'liq tijorat taklifi
                 raw: buffer
             });
         }

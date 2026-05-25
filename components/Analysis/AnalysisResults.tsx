@@ -288,12 +288,41 @@ export default function AnalysisResults({ data, lang, file }: { data: any, lang:
 
     /**
      * Original hujjat HTML ni xato belgilar bilan yaratish
+     * IKKALA manbadan foydalaniladi:
+     * 1) favoritism_evidence — favoritizm dalillari (severity bilan)
+     * 2) optimized_replacements — to'g'rilangan barcha joylar (original_phrase = xato)
      */
     const getOriginalDocHtml = () => {
+        // optimized_replacements dan qo'shimcha xatolar ro'yxatini yaratish
+        const replacementEvidences: any[] = [];
+        if (data.optimized_replacements && Array.isArray(data.optimized_replacements)) {
+            data.optimized_replacements.forEach((rep: any) => {
+                if (rep.original_phrase && rep.original_phrase.trim().length > 4) {
+                    // Agar bu phrase allaqachon favoritism_evidence da bo'lmasa, qo'shamiz
+                    const alreadyExists = data.favoritism_evidence?.some((ev: any) => 
+                        ev.quote && ev.quote.trim() === rep.original_phrase.trim()
+                    );
+                    if (!alreadyExists) {
+                        replacementEvidences.push({
+                            quote: rep.original_phrase.trim(),
+                            reason: `To'g'rilangan: "${rep.corrected_phrase?.trim() || '...'}"`,
+                            severity: 'medium'
+                        });
+                    }
+                }
+            });
+        }
+
+        // Ikkala ro'yxatni birlashtirish
+        const allEvidences = [
+            ...(data.favoritism_evidence || []),
+            ...replacementEvidences
+        ];
+
         if (hasOriginalHtml) {
-            return highlightErrorsInHtml(data.original_html, data.favoritism_evidence);
+            return highlightErrorsInHtml(data.original_html, allEvidences);
         } else if (hasOriginalText) {
-            return renderHighlightedPlainText(data.original_text, data.favoritism_evidence);
+            return renderHighlightedPlainText(data.original_text, allEvidences);
         }
         return '';
     };

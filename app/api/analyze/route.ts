@@ -21,13 +21,13 @@ export async function POST(req: NextRequest) {
         const fileHash = crypto.createHash('md5').update(buffer).digest('hex');
         const fileExt = file.name.split('.').pop()?.toLowerCase();
 
-        // Cached check
+        // Cached check — file_hash + file_name + language bo'yicha
         const existing = await prisma.request.findFirst({ 
             where: {
                 file_hash: fileHash, 
                 file_name: file.name,
                 analysis_type: 'document',
-                language: lang 
+                language: lang,
             }
         });
         
@@ -77,6 +77,40 @@ export async function POST(req: NextRequest) {
             ? originalHtml.substring(0, 800000) 
             : text.substring(0, 500000);
         const isHtmlFormat = fileExt === 'docx' && !!originalHtml;
+
+        // ============ DIAGNOSTIKA LOGLARI ============
+        const totalLines = text.split('\n').length;
+        const totalParagraphs = (originalHtml.match(/<p[\s>]/gi) || []).length;
+        const totalTables = (originalHtml.match(/<table[\s>]/gi) || []).length;
+        const totalHeadings = (originalHtml.match(/<h[1-6][\s>]/gi) || []).length;
+        const totalListItems = (originalHtml.match(/<li[\s>]/gi) || []).length;
+        const estimatedPages = Math.ceil(text.length / 3000); // ~3000 belgi = 1 varoq
+
+        console.log('\n╔══════════════════════════════════════════════════════════╗');
+        console.log('║          📄 HUJJAT DIAGNOSTIKASI (AISCAN)              ║');
+        console.log('╠══════════════════════════════════════════════════════════╣');
+        console.log(`║ 📁 Fayl nomi:       ${file.name}`);
+        console.log(`║ 📦 Fayl hajmi:       ${(buffer.length / 1024).toFixed(1)} KB`);
+        console.log(`║ 📄 Fayl turi:        ${fileExt?.toUpperCase()}`);
+        console.log('╠══════════════════════════════════════════════════════════╣');
+        console.log(`║ 📝 Oddiy matn:       ${text.length.toLocaleString()} belgi`);
+        console.log(`║ 🌐 HTML matn:        ${originalHtml.length.toLocaleString()} belgi`);
+        console.log(`║ 📨 Gemini-ga yuborilgan: ${geminiText.length.toLocaleString()} belgi`);
+        console.log(`║ ✂️  Kesilganmi:       ${geminiText.length < (isHtmlFormat ? originalHtml.length : text.length) ? '⚠️ HA (matn kesildi!)' : '✅ YO\'Q (to\'liq yuborildi)'}`);
+        console.log('╠══════════════════════════════════════════════════════════╣');
+        console.log(`║ 📃 Qatorlar soni:    ${totalLines.toLocaleString()}`);
+        console.log(`║ 📖 Taxminiy varoqlar: ~${estimatedPages} varoq`);
+        console.log(`║ 📑 Paragraflar:      ${totalParagraphs}`);
+        console.log(`║ 📊 Jadvallar:        ${totalTables}`);
+        console.log(`║ 📌 Sarlavhalar:      ${totalHeadings}`);
+        console.log(`║ 📋 Ro'yxat bandlari: ${totalListItems}`);
+        console.log('╠══════════════════════════════════════════════════════════╣');
+        console.log(`║ 🔰 BIRINCHI 150 belgi:`);
+        console.log(`║ ${text.substring(0, 150).replace(/\n/g, ' ↵ ')}`);
+        console.log('╠──────────────────────────────────────────────────────────╣');
+        console.log(`║ 🔚 OXIRGI 150 belgi:`);
+        console.log(`║ ${text.substring(Math.max(0, text.length - 150)).replace(/\n/g, ' ↵ ')}`);
+        console.log('╚══════════════════════════════════════════════════════════╝\n');
         
         const session = await getSession();
         const airport = session.airport || 'TAS';
@@ -304,6 +338,25 @@ Javobni FAQAT QUYIDAGI JSON FORMATIDA, istisnosiz ${targetLangName} tilida qayta
         resultJson.original_text = text;
         resultJson.original_html = originalHtml || '';
         resultJson.original_file_base64 = originalFileBase64 || '';
+
+        // Diagnostika ma'lumotlari — frontendda ko'rsatish uchun
+        resultJson.doc_diagnostics = {
+            file_name: file.name,
+            file_size_kb: Math.round(buffer.length / 1024),
+            file_type: fileExt?.toUpperCase(),
+            raw_text_length: text.length,
+            html_length: originalHtml.length,
+            sent_to_gemini: geminiText.length,
+            is_truncated: geminiText.length < (isHtmlFormat ? originalHtml.length : text.length),
+            total_lines: text.split('\n').length,
+            estimated_pages: Math.ceil(text.length / 3000),
+            paragraphs: (originalHtml.match(/<p[\s>]/gi) || []).length,
+            tables: (originalHtml.match(/<table[\s>]/gi) || []).length,
+            headings: (originalHtml.match(/<h[1-6][\s>]/gi) || []).length,
+            list_items: (originalHtml.match(/<li[\s>]/gi) || []).length,
+            first_text: text.substring(0, 100),
+            last_text: text.substring(Math.max(0, text.length - 100)),
+        };
 
         // Save to DB
         const newReq = await prisma.request.create({

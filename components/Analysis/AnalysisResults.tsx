@@ -406,6 +406,154 @@ export default function AnalysisResults({ data, lang, file }: { data: any, lang:
                         Auditor: <strong style={{ color: 'white' }}>{data.auditor_name || '777'}</strong>
                     </p>
                 </div>
+
+                {/* 📊 HUJJAT DIAGNOSTIKASI — necha qator o'qilganini ko'rsatadi */}
+                {data.doc_diagnostics && (() => {
+                    const dt: Record<string, Record<string, string>> = {
+                        uz: { title: 'Hujjat Diagnostikasi', file_size: 'Fayl hajmi', lines: 'Qatorlar soni', pages: 'Taxminiy varoqlar', sent: 'Gemini-ga yuborilgan', tables: 'Jadvallar', paragraphs: 'Paragraflar', start: 'HUJJAT BOSHLANISHI', end: 'HUJJAT OXIRI', full: "TO'LIQ O'QILDI", truncated: 'MATN KESILGAN', view_all: "Barcha o'qilgan qatorlarni ko'rish", extracted: 'Hujjatdan ajratilgan matn', numbered: 'Har bir qator raqamlangan', page: 'varoq', char: 'belgi', pcs: 'ta', line: 'qator', no_text: 'Matn mavjud emas' },
+                        ru: { title: 'Диагностика документа', file_size: 'Размер файла', lines: 'Кол-во строк', pages: 'Примерно страниц', sent: 'Отправлено в Gemini', tables: 'Таблицы', paragraphs: 'Параграфы', start: 'НАЧАЛО ДОКУМЕНТА', end: 'КОНЕЦ ДОКУМЕНТА', full: 'ПОЛНОСТЬЮ ПРОЧИТАНО', truncated: 'ТЕКСТ ОБРЕЗАН', view_all: 'Показать все прочитанные строки', extracted: 'Извлечённый текст документа', numbered: 'Каждая строка пронумерована', page: 'стр.', char: 'символов', pcs: 'шт.', line: 'строк', no_text: 'Текст отсутствует' },
+                        en: { title: 'Document Diagnostics', file_size: 'File size', lines: 'Total lines', pages: 'Estimated pages', sent: 'Sent to Gemini', tables: 'Tables', paragraphs: 'Paragraphs', start: 'DOCUMENT START', end: 'DOCUMENT END', full: 'FULLY READ', truncated: 'TEXT TRUNCATED', view_all: 'View all extracted lines', extracted: 'Extracted document text', numbered: 'Each line is numbered', page: 'pages', char: 'chars', pcs: '', line: 'lines', no_text: 'No text available' },
+                    };
+                    const t = dt[lang] || dt['uz'];
+                    return (
+                    <div style={{ 
+                        background: 'rgba(30, 41, 59, 0.6)', 
+                        border: '1px solid rgba(34, 197, 94, 0.3)', 
+                        borderRadius: '0.8rem', 
+                        padding: '1.2rem 1.5rem', 
+                        marginTop: '0.8rem',
+                        fontSize: '0.85rem'
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.8rem' }}>
+                            <FileText size={16} color="var(--success)" />
+                            <strong style={{ color: 'var(--success)' }}>📊 {t.title}</strong>
+                            <span style={{ 
+                                marginLeft: 'auto', 
+                                padding: '0.2rem 0.7rem', 
+                                borderRadius: '1rem', 
+                                fontSize: '0.75rem', 
+                                fontWeight: 700,
+                                background: data.doc_diagnostics.is_truncated ? 'rgba(239, 68, 68, 0.15)' : 'rgba(34, 197, 94, 0.15)',
+                                color: data.doc_diagnostics.is_truncated ? '#ef4444' : '#22c55e',
+                                border: `1px solid ${data.doc_diagnostics.is_truncated ? 'rgba(239, 68, 68, 0.3)' : 'rgba(34, 197, 94, 0.3)'}`
+                            }}>
+                                {data.doc_diagnostics.is_truncated ? `⚠️ ${t.truncated}` : `✅ ${t.full}`}
+                            </span>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.6rem' }}>
+                            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.6rem', borderRadius: '0.5rem' }}>
+                                <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>📦 {t.file_size}</div>
+                                <div style={{ color: 'white', fontWeight: 700 }}>{data.doc_diagnostics.file_size_kb} KB</div>
+                            </div>
+                            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.6rem', borderRadius: '0.5rem' }}>
+                                <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>📃 {t.lines}</div>
+                                <div style={{ color: 'white', fontWeight: 700 }}>{data.doc_diagnostics.total_lines?.toLocaleString()}</div>
+                            </div>
+                            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.6rem', borderRadius: '0.5rem' }}>
+                                <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>📖 {t.pages}</div>
+                                <div style={{ color: 'white', fontWeight: 700 }}>~{data.doc_diagnostics.estimated_pages} {t.page}</div>
+                            </div>
+                            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.6rem', borderRadius: '0.5rem' }}>
+                                <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>📨 {t.sent}</div>
+                                <div style={{ color: '#22c55e', fontWeight: 700 }}>{data.doc_diagnostics.sent_to_gemini?.toLocaleString()} {t.char}</div>
+                            </div>
+                            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.6rem', borderRadius: '0.5rem' }}>
+                                <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>📊 {t.tables}</div>
+                                <div style={{ color: 'white', fontWeight: 700 }}>{data.doc_diagnostics.tables} {t.pcs}</div>
+                            </div>
+                            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.6rem', borderRadius: '0.5rem' }}>
+                                <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>📑 {t.paragraphs}</div>
+                                <div style={{ color: 'white', fontWeight: 700 }}>{data.doc_diagnostics.paragraphs} {t.pcs}</div>
+                            </div>
+                        </div>
+                        {/* Birinchi va oxirgi qatorlar */}
+                        <div style={{ marginTop: '0.8rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+                            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.6rem', borderRadius: '0.5rem' }}>
+                                <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', marginBottom: '0.3rem' }}>🔰 {t.start}:</div>
+                                <div style={{ color: '#94a3b8', fontSize: '0.78rem', fontStyle: 'italic', wordBreak: 'break-word' }}>
+                                    &quot;{data.doc_diagnostics.first_text}&quot;
+                                </div>
+                            </div>
+                            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.6rem', borderRadius: '0.5rem' }}>
+                                <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', marginBottom: '0.3rem' }}>🔚 {t.end}:</div>
+                                <div style={{ color: '#94a3b8', fontSize: '0.78rem', fontStyle: 'italic', wordBreak: 'break-word' }}>
+                                    &quot;{data.doc_diagnostics.last_text}&quot;
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* BARCHA O'QILGAN QATORLARNI KO'RISH TUGMASI */}
+                        <div style={{ marginTop: '0.8rem' }}>
+                            <button 
+                                onClick={() => {
+                                    const el = document.getElementById('doc-all-lines');
+                                    if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+                                }}
+                                style={{ 
+                                    background: 'rgba(76, 99, 168, 0.15)', 
+                                    border: '1px solid var(--primary)', 
+                                    color: 'var(--primary)', 
+                                    padding: '0.5rem 1rem', 
+                                    borderRadius: '0.5rem', 
+                                    cursor: 'pointer', 
+                                    fontSize: '0.82rem', 
+                                    fontWeight: 600,
+                                    fontFamily: 'Outfit, sans-serif',
+                                    width: '100%'
+                                }}
+                            >
+                                📋 {t.view_all} ({data.doc_diagnostics.total_lines} {t.line})
+                            </button>
+                            <div 
+                                id="doc-all-lines" 
+                                style={{ 
+                                    display: 'none', 
+                                    marginTop: '0.6rem', 
+                                    background: '#0f172a', 
+                                    border: '1px solid var(--glass-border)', 
+                                    borderRadius: '0.5rem', 
+                                    maxHeight: '400px', 
+                                    overflowY: 'auto',
+                                    padding: '0'
+                                }}
+                            >
+                                <div style={{ 
+                                    position: 'sticky', 
+                                    top: 0, 
+                                    background: '#1e293b', 
+                                    padding: '0.5rem 1rem', 
+                                    borderBottom: '1px solid var(--glass-border)',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    zIndex: 10
+                                }}>
+                                    <span style={{ color: 'var(--primary)', fontWeight: 700, fontSize: '0.8rem' }}>
+                                        📄 {t.extracted} — {data.doc_diagnostics.total_lines} {t.line}
+                                    </span>
+                                    <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>
+                                        {t.numbered}
+                                    </span>
+                                </div>
+                                <pre style={{ 
+                                    margin: 0, 
+                                    padding: '0.8rem', 
+                                    fontSize: '0.72rem', 
+                                    lineHeight: '1.6', 
+                                    color: '#cbd5e1',
+                                    fontFamily: 'Consolas, "Courier New", monospace',
+                                    whiteSpace: 'pre-wrap',
+                                    wordBreak: 'break-word'
+                                }}>
+{data.original_text ? data.original_text.split('\n').map((line: string, idx: number) => 
+    `${String(idx + 1).padStart(4, ' ')} │ ${line}`
+).join('\n') : t.no_text}
+                                </pre>
+                            </div>
+                        </div>
+                    </div>
+                    );
+                })()}
             </div>
 
             {/* Audit Basis Section */}

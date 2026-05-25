@@ -190,3 +190,112 @@ export const exportToPDF = async (data: any, lang: string) => {
 
   doc.save(`AISCAN_AUDIT_${data.request_id || 'REPORT'}.pdf`);
 };
+
+export const exportCorrectedToPDF = async (text: string, title: string) => {
+  const doc = new jsPDF();
+
+  const robotoBase64 = await loadRobotoFont();
+  let fontLoaded = false;
+
+  if (robotoBase64) {
+    try {
+      doc.addFileToVFS('Roboto-Regular.ttf', robotoBase64);
+      doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
+      doc.addFont('Roboto-Regular.ttf', 'Roboto', 'bold'); 
+      doc.setFont('Roboto', 'normal');
+      fontLoaded = true;
+    } catch (e) {
+      console.warn('Font add failed:', e);
+    }
+  }
+
+  if (!fontLoaded) {
+    doc.setFont('helvetica', 'normal');
+  }
+
+  const currentFont = fontLoaded ? 'Roboto' : 'helvetica';
+  const pageWidth = doc.internal.pageSize.width;
+  const pageHeight = doc.internal.pageSize.height;
+  const margin = 15;
+  const maxLineWidth = pageWidth - (margin * 2);
+
+  let currentY = 20;
+
+  // Add Document Header
+  doc.setFont(currentFont, 'bold');
+  doc.setFontSize(14);
+  const headerText = (title || 'OPTIMALLASHTIRILGAN HUJJAT').toUpperCase();
+  const headerLines = doc.splitTextToSize(headerText, maxLineWidth);
+  headerLines.forEach((line: string) => {
+    if (currentY > pageHeight - 20) {
+      doc.addPage();
+      currentY = 20;
+    }
+    doc.text(line, pageWidth / 2, currentY, { align: 'center' });
+    currentY += 8;
+  });
+  
+  currentY += 5; // spacing
+
+  // Parse and render lines
+  const lines = text.split('\n');
+  doc.setFontSize(11);
+  doc.setFont(currentFont, 'normal');
+
+  for (let line of lines) {
+    line = line.trim();
+    if (!line) {
+      currentY += 5; // blank line
+      continue;
+    }
+
+    let isHeading = false;
+    let size = 11;
+    let style = 'normal';
+
+    if (line.startsWith('# ')) {
+      line = line.substring(2).trim();
+      size = 14;
+      style = 'bold';
+      isHeading = true;
+    } else if (line.startsWith('## ')) {
+      line = line.substring(3).trim();
+      size = 13;
+      style = 'bold';
+      isHeading = true;
+    } else if (line.startsWith('### ')) {
+      line = line.substring(4).trim();
+      size = 12;
+      style = 'bold';
+      isHeading = true;
+    }
+
+    doc.setFont(currentFont, style);
+    doc.setFontSize(size);
+
+    let isBullet = false;
+    if (line.startsWith('- ') || line.startsWith('* ')) {
+      line = line.substring(2).trim();
+      isBullet = true;
+    }
+
+    const cleanLineText = line.replace(/\*\*/g, '');
+    const prefix = isBullet ? '• ' : '';
+    const textToDraw = prefix + cleanLineText;
+
+    const wrappedLines = doc.splitTextToSize(textToDraw, maxLineWidth);
+
+    for (let wrappedLine of wrappedLines) {
+      if (currentY > pageHeight - 20) {
+        doc.addPage();
+        if (fontLoaded) doc.setFont('Roboto', style);
+        currentY = 20;
+      }
+      doc.text(wrappedLine, margin, currentY);
+      currentY += isHeading ? 7 : 6;
+    }
+    currentY += 2; // spacing after paragraph
+  }
+
+  doc.save(`${(title || 'hujjat').replace(/[^a-zA-Z0-9А-Яа-яЎўҚқҒғҲҳ_.-]/g, '_')}_optimized.pdf`);
+};

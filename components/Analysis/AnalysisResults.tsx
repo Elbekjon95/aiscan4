@@ -1,12 +1,129 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { getTranslation } from '@/lib/translations';
-import { Search, Tag, ShieldCheck, AlertTriangle, XOctagon, FileDown, BookOpen, X } from 'lucide-react';
+import { Search, Tag, ShieldCheck, AlertTriangle, XOctagon, FileDown, BookOpen, X, Eye, FileText, CheckCircle } from 'lucide-react';
 import { exportToPDF } from '@/lib/pdfExport';
 
-export default function AnalysisResults({ data, lang }: { data: any, lang: string }) {
-    const [showOptimized, setShowOptimized] = useState(false);
-    
+export default function AnalysisResults({ data, lang, file }: { data: any, lang: string, file?: File | null }) {
+    const [showDocModal, setShowDocModal] = useState(false);
+    const [docModalTab, setDocModalTab] = useState<'original' | 'corrected'>('original');
+    const [pdfSrc, setPdfSrc] = useState<string | null>(null);
+    const [basePdfUrl, setBasePdfUrl] = useState<string | null>(null);
+    const [isDownloading, setIsDownloading] = useState(false);
+
+    // Initialize PDF view if file is a PDF
+    useEffect(() => {
+        if (file && file.type === 'application/pdf') {
+            const url = URL.createObjectURL(file);
+            setBasePdfUrl(url);
+            setPdfSrc(url);
+            return () => {
+                URL.revokeObjectURL(url);
+            };
+        } else if (data.original_file_base64) {
+            // Bazadan kelgan PDF (admin view - file yo'q)
+            const blob = base64ToBlob(data.original_file_base64, 'application/pdf');
+            const url = URL.createObjectURL(blob);
+            setBasePdfUrl(url);
+            setPdfSrc(url);
+            return () => {
+                URL.revokeObjectURL(url);
+            };
+        } else {
+            setBasePdfUrl(null);
+            setPdfSrc(null);
+        }
+    }, [file, data.original_file_base64]);
+
+    const base64ToBlob = (base64: string, mimeType: string) => {
+        const byteCharacters = atob(base64);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        return new Blob([byteArray], { type: mimeType });
+    };
+
+    /**
+     * Tuzatilgan DOCX yuklab olish — original formatlash saqlanadi
+     */
+    const handleDownloadCorrectedDocx = async () => {
+        if (!file) {
+            alert('Original fayl mavjud emas. Iltimos, sahifani yangilab, faylni qayta yuklang.');
+            return;
+        }
+
+        setIsDownloading(true);
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('replacements', JSON.stringify(data.optimized_replacements || []));
+
+            const response = await fetch('/api/download-corrected', {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (!response.ok) {
+                const errData = await response.json().catch(() => ({}));
+                throw new Error(errData.error || 'Yuklab olishda xatolik');
+            }
+
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${(file.name || 'hujjat').replace(/\.docx$/i, '')}_corrected.docx`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } catch (err: any) {
+            console.error(err);
+            alert(err.message || 'Hujjatni yuklab olishda xatolik yuz berdi.');
+        } finally {
+            setIsDownloading(false);
+        }
+    };
+
+    /**
+     * PDF fayllar uchun — tuzatilgan matnni DOCX formatida yuklab olish
+     */
+    const handleDownloadCorrectedFromText = async () => {
+        const docText = data.corrected_version || data.optimized_version;
+        if (!docText) return;
+
+        setIsDownloading(true);
+        try {
+            const response = await fetch('/api/download-docx', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    text: docText,
+                    title: data.document_title || file?.name || 'optimized_document'
+                })
+            });
+
+            if (!response.ok) throw new Error('Download failed');
+
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${(data.document_title || file?.name || 'hujjat').replace(/[^a-zA-Z0-9А-Яа-яЎўҚқҒғҲҳ_.-]/g, '_')}_corrected.docx`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error(err);
+            alert('Word hujjatini yuklab olishda xatolik yuz berdi.');
+        } finally {
+            setIsDownloading(false);
+        }
+    };
+
     const getIcon = (status: string) => {
         switch(status) {
             case 'success': return <ShieldCheck color="var(--success)" />;
@@ -16,24 +133,175 @@ export default function AnalysisResults({ data, lang }: { data: any, lang: strin
         }
     };
 
-    const getVerdictStyle = (verdict: string) => {
-        switch(verdict) {
-            case 'none': return { bg: 'rgba(16, 185, 129, 0.15)', color: 'var(--success)', border: 'var(--success)' };
-            case 'suspected': return { bg: 'rgba(245, 158, 11, 0.15)', color: 'var(--warning)', border: 'var(--warning)' };
-            case 'confirmed': return { bg: 'rgba(239, 68, 68, 0.15)', color: 'var(--error)', border: 'var(--error)' };
-            default: return { bg: 'rgba(255,255,255,0.1)', color: 'white', border: 'var(--glass-border)' };
-        }
+    const isPdf = file ? file.type === 'application/pdf' : !!data.original_file_base64;
+    const isDocx = file ? file.name?.toLowerCase().endsWith('.docx') : false;
+    const hasOriginalHtml = !!data.original_html;
+    const hasOriginalText = !!data.original_text;
+    const hasReplacements = data.optimized_replacements && data.optimized_replacements.length > 0;
+
+    const escapeRegExp = (str: string) => {
+        return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     };
 
-    const getSeverityColor = (sev: string) => {
-        switch(sev) {
-            case 'low': return '#6b7280';
-            case 'medium': return 'var(--warning)';
-            case 'high': return 'var(--error)';
-            case 'critical': return '#dc2626';
-            default: return 'var(--text-muted)';
-        }
+    const escapeHtmlAttr = (str: string) => {
+        return str
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
     };
+
+    /**
+     * HTML matn ichidan xato joylarni qizil bilan belgilash
+     * original_html (mammoth-dan) ustida ishlaydi
+     */
+    const highlightErrorsInHtml = (html: string, evidences: any[]) => {
+        if (!html) return '';
+        let result = html;
+
+        evidences?.forEach((ev) => {
+            if (ev.quote && ev.quote.trim().length > 4) {
+                const quote = ev.quote.trim();
+                try {
+                    // HTML teglarini hisobga olmasdan matn ichidan qidirish
+                    // Avval oddiy text match qilamiz (teglar o'rtasida bo'lmagan matn)
+                    const escaped = escapeRegExp(quote);
+                    const parts = escaped.split(/\s+/);
+                    // Dynamic whitespace + possible HTML tags between words
+                    const regexPattern = parts.join('(?:\\s|<[^>]*>)*');
+                    const regex = new RegExp(regexPattern, 'gi');
+
+                    const severity = ev.severity || 'medium';
+                    const reason = escapeHtmlAttr(ev.reason || '');
+
+                    result = result.replace(regex, (match: string) => {
+                        // Agar match ichida ochilgan va yopilmagan teglar bo'lsa, ularni to'g'ri wrap qilish
+                        return `<span class="error-highlight" data-severity="${severity}" data-reason="${reason}">${match}</span>`;
+                    });
+                } catch(e) {
+                    // Regex xatosi — o'tkazib yuboramiz
+                }
+            }
+        });
+
+        return result;
+    };
+
+    /**
+     * HTML matn ichidan tuzatilgan joylarni yashil bilan belgilash
+     * optimized_replacements asosida ishlaydi
+     */
+    const highlightCorrectionsInHtml = (html: string, replacements: any[]) => {
+        if (!html || !replacements) return html;
+        let result = html;
+
+        replacements?.forEach((rep: any) => {
+            if (rep.corrected_phrase && rep.original_phrase) {
+                const corrected = rep.corrected_phrase.trim();
+                const original = rep.original_phrase.trim();
+                if (corrected.length < 3) return;
+
+                try {
+                    const escaped = escapeRegExp(corrected);
+                    const parts = escaped.split(/\s+/);
+                    const regexPattern = parts.join('(?:\\s|<[^>]*>)*');
+                    const regex = new RegExp(regexPattern, 'gi');
+
+                    const originalAttr = escapeHtmlAttr(`Eski variant: ${original}`);
+
+                    result = result.replace(regex, (match: string) => {
+                        return `<span class="corrected-highlight" data-original="${originalAttr}">${match}</span>`;
+                    });
+                } catch(e) {}
+            }
+        });
+
+        return result;
+    };
+
+    /**
+     * Oddiy matndan xatolarni belgilangan HTML yaratish (agar original_html yo'q bo'lsa)
+     */
+    const renderHighlightedPlainText = (fullText: string, evidences: any[]) => {
+        if (!fullText) return '';
+        let html = fullText
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/\n/g, '<br/>');
+
+        evidences?.forEach((ev) => {
+            if (ev.quote && ev.quote.trim().length > 4) {
+                const quoteClean = ev.quote.trim()
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;');
+                try {
+                    const escaped = escapeRegExp(quoteClean);
+                    const parts = escaped.split(/\s+/);
+                    const regex = new RegExp(parts.join('(?:[\\s\\n\\r\\t]|<br\\/??>)*'), 'gi');
+
+                    const severity = ev.severity || 'medium';
+                    const reason = escapeHtmlAttr(ev.reason || '');
+
+                    html = html.replace(regex, (match: string) => {
+                        return `<span class="error-highlight" data-severity="${severity}" data-reason="${reason}">${match}</span>`;
+                    });
+                } catch(e) {}
+            }
+        });
+
+        return html;
+    };
+
+    /**
+     * Tuzatilgan versiya HTML ni yaratish
+     */
+    const buildCorrectedHtml = () => {
+        if (hasOriginalHtml && hasReplacements) {
+            // Original HTML da original_phrase -> corrected_phrase almashtirish
+            let correctedHtml = data.original_html;
+            data.optimized_replacements.forEach((rep: any) => {
+                if (rep.original_phrase && rep.corrected_phrase) {
+                    const orig = rep.original_phrase.trim();
+                    const corr = rep.corrected_phrase.trim();
+                    if (orig.length > 0) {
+                        // HTML teglarini saqlagan holda matnni almashtirish
+                        try {
+                            const escaped = escapeRegExp(orig);
+                            const parts = escaped.split(/\s+/);
+                            const regexPattern = parts.join('(?:\\s|<[^>]*>)*');
+                            const regex = new RegExp(regexPattern, 'gi');
+                            correctedHtml = correctedHtml.replace(regex, corr);
+                        } catch(e) {
+                            correctedHtml = correctedHtml.split(orig).join(corr);
+                        }
+                    }
+                }
+            });
+            // Tuzatilgan joylarni yashil bilan belgilash
+            return highlightCorrectionsInHtml(correctedHtml, data.optimized_replacements);
+        }
+        return '';
+    };
+
+    /**
+     * Original hujjat HTML ni xato belgilar bilan yaratish
+     */
+    const getOriginalDocHtml = () => {
+        if (hasOriginalHtml) {
+            return highlightErrorsInHtml(data.original_html, data.favoritism_evidence);
+        } else if (hasOriginalText) {
+            return renderHighlightedPlainText(data.original_text, data.favoritism_evidence);
+        }
+        return '';
+    };
+
+    const correctedDocHtml = buildCorrectedHtml();
+    const originalDocHtml = getOriginalDocHtml();
+    const canShowDocViewer = hasOriginalHtml || hasOriginalText || isPdf;
+    const canShowCorrected = correctedDocHtml.length > 0 || (data.corrected_version || data.optimized_version);
 
     return (
         <div className="analysis-grid">
@@ -44,19 +312,61 @@ export default function AnalysisResults({ data, lang }: { data: any, lang: strin
             )}
 
             <div style={{ gridColumn: '1 / -1', marginBottom: '2rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
                     <h2 style={{ fontSize: '2rem', fontWeight: 800 }}>{getTranslation(lang, 'label_main')}</h2>
-                    <button 
-                        onClick={() => exportToPDF(data, lang)}
-                        className="btn btn-primary btn-glow"
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', padding: '0.8rem 1.5rem' }}
-                    >
-                        <FileDown size={20} />
-                        {getTranslation(lang, 'btn_download_pdf')}
-                    </button>
+                    
+                    <div style={{ display: 'flex', gap: '0.8rem', flexWrap: 'wrap' }}>
+                        {/* 1. PDF Audit Report */}
+                        <button 
+                            onClick={() => exportToPDF(data, lang)}
+                            className="btn btn-secondary"
+                            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 1.2rem', fontSize: '0.9rem', cursor: 'pointer' }}
+                        >
+                            <FileDown size={16} />
+                            {getTranslation(lang, 'btn_download_pdf')}
+                        </button>
+
+                        {/* 2. View Original Document (Modal with tabs) */}
+                        {canShowDocViewer && (
+                            <button 
+                                onClick={() => { setDocModalTab('original'); setShowDocModal(true); }}
+                                className="btn btn-secondary"
+                                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 1.2rem', fontSize: '0.9rem', border: '1px solid var(--primary)', background: 'rgba(79, 70, 229, 0.05)', color: 'var(--primary)', cursor: 'pointer' }}
+                            >
+                                <Eye size={16} />
+                                Hujjatni ko'rish
+                            </button>
+                        )}
+
+                        {/* 3. View Corrected Version */}
+                        {canShowCorrected && (
+                            <button 
+                                onClick={() => { setDocModalTab('corrected'); setShowDocModal(true); }}
+                                className="btn btn-secondary"
+                                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 1.2rem', fontSize: '0.9rem', border: '1px solid var(--secondary)', background: 'rgba(212, 175, 55, 0.05)', color: 'var(--secondary)', cursor: 'pointer' }}
+                            >
+                                <ShieldCheck size={16} />
+                                {getTranslation(lang, 'btn_view_optimized')}
+                            </button>
+                        )}
+
+                        {/* 4. Download Corrected */}
+                        {canShowCorrected && (
+                            <button 
+                                onClick={isDocx ? handleDownloadCorrectedDocx : handleDownloadCorrectedFromText}
+                                disabled={isDownloading}
+                                className="btn btn-primary btn-glow"
+                                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 1.2rem', fontSize: '0.9rem', cursor: 'pointer' }}
+                            >
+                                <FileDown size={16} />
+                                {isDownloading ? 'Yuklanmoqda...' : (isDocx ? 'Tuzatilgan DOCX yuklash' : 'Tuzatilgan Word (DOCX)')}
+                            </button>
+                        )}
+                    </div>
                 </div>
+
                 {/* AI tomonidan aniqlangan rasmiy hujjat nomi */}
-                <div style={{ background: 'rgba(79, 70, 229, 0.1)', borderLeft: '4px solid var(--primary)', padding: '1rem 1.5rem', borderRadius: '0.5rem' }}>
+                <div style={{ background: 'rgba(79, 70, 229, 0.1)', borderLeft: '4px solid var(--primary)', padding: '1rem 1.5rem', borderRadius: '0.5rem', marginTop: '0.5rem' }}>
                     <h3 style={{ fontSize: '1.2rem', color: 'white', marginBottom: '0.2rem' }}>
                         {data.document_title || getTranslation(lang, 'table_file')}
                     </h3>
@@ -87,36 +397,112 @@ export default function AnalysisResults({ data, lang }: { data: any, lang: strin
                 </div>
             )}
 
-            {/* Optimized Version Button */}
-            {(data.corrected_version || data.optimized_version) && (
-                <div style={{ gridColumn: '1 / -1', marginBottom: '2rem' }}>
-                    <button 
-                        onClick={() => setShowOptimized(true)}
-                        className="btn btn-glow btn-secondary" 
-                        style={{ width: '100%', padding: '1.2rem', fontSize: '1.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.8rem', border: '1px solid var(--secondary)', background: 'rgba(212, 175, 55, 0.05)', color: 'var(--secondary)' }}
-                    >
-                        <ShieldCheck size={24} />
-                        {getTranslation(lang, 'btn_view_optimized')}
-                    </button>
-                </div>
-            )}
-
-            {/* Modal for Optimized Version */}
-            {showOptimized && (
-                <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
-                    <div className="analysis-card" style={{ maxWidth: '900px', width: '100%', maxHeight: '90vh', overflowY: 'auto', position: 'relative', padding: '3rem' }}>
-                        <button onClick={() => setShowOptimized(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', color: 'white', cursor: 'pointer' }}>
+            {/* ============================================= */}
+            {/* UNIVERSAL DOCUMENT MODAL (Tab bilan) */}
+            {/* ============================================= */}
+            {showDocModal && (
+                <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(12px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+                    <div className="analysis-card" style={{ maxWidth: '1000px', width: '98%', height: '95vh', maxHeight: '95vh', position: 'relative', padding: '2rem 2rem 1.5rem 2rem', display: 'flex', flexDirection: 'column' }}>
+                        {/* Close button */}
+                        <button onClick={() => setShowDocModal(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', color: 'white', cursor: 'pointer', zIndex: 1001 }}>
                             <X size={32} />
                         </button>
-                        <h2 style={{ marginBottom: '2rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                            <ShieldCheck color="var(--secondary)" size={32} />
-                            {getTranslation(lang, 'modal_optimized_title')}
-                        </h2>
-                        <div style={{ background: 'rgba(255,255,255,0.05)', padding: '2rem', borderRadius: '1rem', whiteSpace: 'pre-wrap', lineHeight: '1.8', color: '#e2e8f0', fontSize: '1.1rem' }}>
-                            {data.corrected_version || data.optimized_version}
+
+                        {/* Tab tizimi */}
+                        {canShowCorrected && (
+                            <div className="doc-tabs">
+                                <button 
+                                    className={`doc-tab ${docModalTab === 'original' ? 'active' : ''}`}
+                                    onClick={() => setDocModalTab('original')}
+                                >
+                                    <Eye size={16} />
+                                    Original Hujjat
+                                </button>
+                                <button 
+                                    className={`doc-tab ${docModalTab === 'corrected' ? 'active-corrected' : ''}`}
+                                    onClick={() => setDocModalTab('corrected')}
+                                >
+                                    <CheckCircle size={16} />
+                                    Tuzatilgan Versiya
+                                </button>
+                            </div>
+                        )}
+
+                        {!canShowCorrected && (
+                            <h2 style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.3rem' }}>
+                                <FileText size={20} /> Hujjat ko'rinishi
+                            </h2>
+                        )}
+
+                        {/* Legend */}
+                        <div className="doc-legend">
+                            {docModalTab === 'original' && (
+                                <div className="doc-legend-item">
+                                    <div className="doc-legend-color error"></div>
+                                    <span>Xatolar va favoritizm joylari (ustiga bosib ko'ring)</span>
+                                </div>
+                            )}
+                            {docModalTab === 'corrected' && (
+                                <div className="doc-legend-item">
+                                    <div className="doc-legend-color corrected"></div>
+                                    <span>To'g'rilangan joylar (ustiga bosib eskisini ko'ring)</span>
+                                </div>
+                            )}
                         </div>
-                        <div style={{ marginTop: '2rem', textAlign: 'center' }}>
-                            <button className="btn btn-secondary" onClick={() => setShowOptimized(false)}>{getTranslation(lang, 'modal_close')}</button>
+
+                        {/* Original tab */}
+                        {docModalTab === 'original' && (
+                            <div style={{ overflowY: 'auto', flex: 1 }}>
+                                {(hasOriginalHtml || hasOriginalText) ? (
+                                    <div 
+                                        className="doc-viewer"
+                                        dangerouslySetInnerHTML={{ __html: originalDocHtml }}
+                                    />
+                                ) : isPdf && pdfSrc ? (
+                                    <div style={{ flex: 1, background: '#1e293b', borderRadius: '0.5rem', overflow: 'hidden', height: '100%' }}>
+                                        <iframe src={pdfSrc} style={{ width: '100%', height: '100%', minHeight: '60vh', border: 'none' }} title="PDF Viewer" />
+                                    </div>
+                                ) : (
+                                    <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                                        Hujjat matni mavjud emas.
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Corrected tab */}
+                        {docModalTab === 'corrected' && (
+                            <div style={{ overflowY: 'auto', flex: 1 }}>
+                                {correctedDocHtml ? (
+                                    <div 
+                                        className="doc-viewer"
+                                        dangerouslySetInnerHTML={{ __html: correctedDocHtml }}
+                                    />
+                                ) : (data.corrected_version || data.optimized_version) ? (
+                                    <div className="doc-viewer" style={{ whiteSpace: 'pre-wrap' }}>
+                                        {data.corrected_version || data.optimized_version}
+                                    </div>
+                                ) : (
+                                    <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                                        Tuzatilgan versiya mavjud emas.
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                        
+                        <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end', gap: '0.8rem' }}>
+                            {docModalTab === 'corrected' && canShowCorrected && (
+                                <button 
+                                    className="btn btn-primary"
+                                    onClick={isDocx ? handleDownloadCorrectedDocx : handleDownloadCorrectedFromText}
+                                    disabled={isDownloading}
+                                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}
+                                >
+                                    <FileDown size={18} />
+                                    {isDownloading ? 'Yuklanmoqda...' : (isDocx ? 'Tuzatilgan DOCX yuklash' : 'Word (DOCX) yuklab olish')}
+                                </button>
+                            )}
+                            <button className="btn btn-secondary" onClick={() => setShowDocModal(false)} style={{ cursor: 'pointer' }}>{getTranslation(lang, 'modal_close')}</button>
                         </div>
                     </div>
                 </div>

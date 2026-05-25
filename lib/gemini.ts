@@ -16,7 +16,7 @@ export async function callGeminiStream(data: any, returnText: boolean = false): 
     }
 
     let response;
-    let retries = 3;
+    let retries = 5;
     let errorBody = "";
 
     while (retries > 0) {
@@ -33,12 +33,13 @@ export async function callGeminiStream(data: any, returnText: boolean = false): 
 
             errorBody = await response.text();
             
-            // Agar 503 High Demand bo'lsa, biroz kutib qayta urinamiz
+            // Agar 503 High Demand bo'lsa, biroz kutib qayta urinamiz (Exponential backoff)
             if (response.status === 503) {
-                console.warn(`Gemini API 503 xatosi. Qayta urinish... Qolgan urinishlar: ${retries - 1}`);
+                const waitTime = (6 - retries) * 3000; // 3s, 6s, 9s, 12s, 15s
+                console.warn(`Gemini API 503 xatosi. Qayta urinish... Qolgan urinishlar: ${retries - 1}. Kutish vaqti: ${waitTime / 1000}s`);
                 retries--;
                 if (retries === 0) break;
-                await new Promise(r => setTimeout(r, 5000)); // 5 soniya kutish
+                await new Promise(r => setTimeout(r, waitTime));
                 continue;
             }
 
@@ -47,9 +48,10 @@ export async function callGeminiStream(data: any, returnText: boolean = false): 
             throw new Error(`Gemini API error: ${response.status} - ${errorBody.substring(0, 200)}`);
         } catch (err: any) {
             if (retries === 1 || err.message.includes("Gemini API error")) throw err;
-            console.warn(`Tarmoq xatosi (fetch): ${err.message}. Qayta urinish...`);
+            const waitTime = (6 - retries) * 3000;
+            console.warn(`Tarmoq xatosi (fetch): ${err.message}. Qayta urinish... Kutish vaqti: ${waitTime / 1000}s`);
             retries--;
-            await new Promise(r => setTimeout(r, 5000));
+            await new Promise(r => setTimeout(r, waitTime));
         }
     }
 

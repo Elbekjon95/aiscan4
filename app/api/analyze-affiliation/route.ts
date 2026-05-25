@@ -26,8 +26,14 @@ export async function POST(req: NextRequest) {
                 
                 text = ''; // Gemini resolves PDF natively via payload
             } else if (fileExt === 'docx') {
-                const result = await mammoth.extractRawText({ buffer });
-                text = result.value;
+                // HTML formatda olish — jadvallar, rekvizitlar va tuzilmalar saqlanadi
+                const htmlResult = await mammoth.convertToHtml({ buffer });
+                text = htmlResult.value || '';
+                // Agar HTML bo'sh bo'lsa, oddiy matnni olish
+                if (!text) {
+                    const rawResult = await mammoth.extractRawText({ buffer });
+                    text = rawResult.value;
+                }
             }
 
             allFilesData.push({

@@ -28,6 +28,9 @@ export default async function AdminViewPage({ params, searchParams }: { params: 
     const data: any = reqData.full_analysis || {};
     data.corrected_version = reqData.corrected_version || data.optimized_version || data.corrected_version;
     data.auditor_name = reqData.auditor_name || '777';
+    // Original HTML va PDF base64 ni full_analysis dan chiqarish (agar mavjud bo'lsa)
+    if (!data.original_html) data.original_html = '';
+    if (!data.original_file_base64) data.original_file_base64 = '';
 
     return (
         <div className="view-container" style={{ maxWidth: '1300px', margin: '3rem auto', padding: '0 5%' }}>

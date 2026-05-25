@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import { getSession } from '@/lib/auth';
 
 const mammoth = require('mammoth');
+const pdfParse = require('pdf-parse');
 
 export async function POST(req: NextRequest) {
     try {
@@ -32,22 +33,48 @@ export async function POST(req: NextRequest) {
         
         if (existing) {
             const cachedData = (existing.full_analysis as any) || {};
-            cachedData.corrected_version = existing.corrected_version || cachedData.optimized_version || cachedData.corrected_version;
-            return NextResponse.json({ ...cachedData, success: true, is_cached: true, request_id: existing.id });
+            if (cachedData.original_text) {
+                cachedData.corrected_version = existing.corrected_version || cachedData.optimized_version || cachedData.corrected_version;
+                return NextResponse.json({ ...cachedData, success: true, is_cached: true, request_id: existing.id });
+            }
         }
 
-        // Extract Text
+        // Extract Text + Original HTML (for DOCX)
         let text = '';
+        let originalHtml = '';
+        let originalFileBase64 = '';
         if (fileExt === 'pdf') {
-            text = ''; // Gemini accepts PDF via base64 automatically
+            try {
+                const pdfData = await pdfParse(buffer);
+                text = pdfData.text || '';
+            } catch (err) {
+                console.error("pdf-parse error:", err);
+                text = '';
+            }
+            // PDF faylni base64 formatida saqlash (frontend iframe uchun)
+            originalFileBase64 = buffer.toString('base64');
         } else if (fileExt === 'docx') {
-            const result = await mammoth.extractRawText({ buffer });
-            text = result.value;
+            const rawResult = await mammoth.extractRawText({ buffer });
+            text = rawResult.value;
+            // Original formatlash bilan HTML olish
+            const htmlResult = await mammoth.convertToHtml({ buffer }, {
+                styleMap: [
+                    "p[style-name='Heading 1'] => h1:fresh",
+                    "p[style-name='Heading 2'] => h2:fresh",
+                    "p[style-name='Heading 3'] => h3:fresh",
+                ]
+            });
+            originalHtml = htmlResult.value;
         } else {
             return NextResponse.json({ success: false, error: 'Faqat PDF va DOCX fayllari ruxsat etiladi.' }, { status: 400 });
         }
 
-        const cleanedText = text.substring(0, 15000); // limit to avoid massive context
+        // DOCX uchun HTML formatdagi matn ishlatamiz (jadvallar, ro'yxatlar saqlanadi)
+        // PDF uchun oddiy matn qoladi (PDF o'zi inline sifatida yuboriladi)
+        const geminiText = (fileExt === 'docx' && originalHtml) 
+            ? originalHtml.substring(0, 120000) 
+            : text.substring(0, 100000);
+        const isHtmlFormat = fileExt === 'docx' && !!originalHtml;
         
         const session = await getSession();
         const airport = session.airport || 'TAS';
@@ -153,8 +180,8 @@ ${docsContext ? docsContext : ''}
 ${previousFindingsContext ? previousFindingsContext : ''}
 
 
-HUJJAT MATNI:
-${cleanedText || '[Matn ajratib olinmadi, ilova qilingan PDF ga qarang]'}
+HUJJAT MATNI${isHtmlFormat ? ' (HTML formatda — jadvallar <table>, ro\'yxatlar <ul>/<ol>, sarlavhalar <h1>-<h3> sifatida berilgan)' : ''}:
+${geminiText || '[Matn ajratib olinmadi, ilova qilingan PDF ga qarang]'}
 
 ## 2. AUDIT VAZIFALARI (TASKS) - TIZIMLI TAHLIL QOIDALARI
 Siz ushbu vazifalarni HUJJATNING HAR BIR BANDI bo'yicha bajarishingiz shart:
@@ -216,9 +243,14 @@ Javobni FAQAT QUYIDAGI JSON FORMATIDA, istisnosiz ${targetLangName} tilida qayta
   "audit_basis": ["Ushbu auditda tayanilgan aniq qonunlar va nizomlar ro'yxati"],
   "risks": ["Sinchkov tahlilda aniqlangan barcha xavflar ro'yxati"],
   "recommendations": ["Audit xulosasi asosidagi aniq va barcha harakatlar ro'yxati"],
-  "optimized_version": "Hujjatning barcha xato va kamchiliklari tuzatilgan, favoritizm elementlaridan xoli bo'lgan to'liq yangi matni. Agar matn juda uzun bo'lsa, eng muhim qismlarini (texnik talablar va shartlarni) optimallashtirib bering.",
+  "optimized_replacements": [
+     {
+        "original_phrase": "Hujjatdagi xato yoki favoritizm aniqlangan aynan o'sha gap yoki abzas matni. Bu matn asl hujjat matni bilan 100% bir xil bo'lishi shart.",
+        "corrected_phrase": "Ushbu gap yoki abzasning to'liq to'g'rilangan, xatolar va favoritizmdan tozalangan yangi varianti."
+     }
+  ],
   "products": [
-    { "name": "Mahsulot", "search_query": "Qidiruv so'rovi" }
+     { "name": "Mahsulot", "search_query": "Qidiruv so'rovi" }
   ]
 }
 `;
@@ -249,6 +281,28 @@ Javobni FAQAT QUYIDAGI JSON FORMATIDA, istisnosiz ${targetLangName} tilida qayta
             resultJson = resultJson[0];
         }
 
+        // Reconstruct optimized version by replacing incorrect phrases in original text
+        let optimizedText = text;
+        if (resultJson.optimized_replacements && Array.isArray(resultJson.optimized_replacements)) {
+            resultJson.optimized_replacements.forEach((rep: any) => {
+                if (rep.original_phrase && rep.corrected_phrase) {
+                    const orig = rep.original_phrase.trim();
+                    const corr = rep.corrected_phrase.trim();
+                    if (orig.length > 0) {
+                        if (optimizedText.includes(orig)) {
+                            optimizedText = optimizedText.replace(orig, corr);
+                        } else {
+                            optimizedText = optimizedText.split(orig).join(corr);
+                        }
+                    }
+                }
+            });
+        }
+        resultJson.optimized_version = optimizedText;
+        resultJson.original_text = text;
+        resultJson.original_html = originalHtml || '';
+        resultJson.original_file_base64 = originalFileBase64 || '';
+
         // Save to DB
         const newReq = await prisma.request.create({
             data: {
@@ -262,14 +316,14 @@ Javobni FAQAT QUYIDAGI JSON FORMATIDA, istisnosiz ${targetLangName} tilida qayta
                 language: lang,
                 airport: airport,
                 auditor_name: auditorName,
-                corrected_version: resultJson.optimized_version || null,
+                corrected_version: optimizedText || null,
                 full_analysis: resultJson
             }
         });
 
         return NextResponse.json({ 
             ...resultJson, 
-            corrected_version: resultJson.optimized_version, 
+            corrected_version: optimizedText, 
             success: true, 
             request_id: newReq.id,
             file_name: file.name,

@@ -137,7 +137,7 @@ export default function Home() {
                 )}
 
                 <div id="results" className={!resultData ? 'hidden' : ''}>
-                    {resultData && <AnalysisResults data={resultData} lang={lang} />}
+                    {resultData && <AnalysisResults data={resultData} lang={lang} file={file} />}
                 </div>
             </div>
             <Footer />

@@ -100,8 +100,13 @@ export async function POST(req: NextRequest) {
         if (fileExt === 'pdf') {
             text = '';
         } else if (fileExt === 'docx') {
-            const result = await mammoth.extractRawText({ buffer });
-            text = result.value;
+            // HTML formatda olish — jadvallar va texnik talablar saqlanadi
+            const htmlResult = await mammoth.convertToHtml({ buffer });
+            text = htmlResult.value || '';
+            if (!text) {
+                const rawResult = await mammoth.extractRawText({ buffer });
+                text = rawResult.value;
+            }
         }
 
         const targetLangName = lang === 'uz' ? "O'zbek tili" : (lang === 'ru' ? "Rus tili" : "Ingliz tili");

@@ -908,3 +908,395 @@ footer {
     }
 }
 
+/* =====================================================
+   A4 HUJJAT KO'RINISHI (Document Viewer)
+   ===================================================== */
+
+.doc-viewer {
+    background: #ffffff;
+    color: #1e293b;
+    font-family: "Times New Roman", Times, "Serif", serif;
+    font-size: 14px;
+    line-height: 1.7;
+    padding: 60px 70px;
+    border-radius: 4px;
+    box-shadow:
+        0 0 0 1px rgba(0, 0, 0, 0.08),
+        0 4px 20px rgba(0, 0, 0, 0.15),
+        0 12px 40px rgba(0, 0, 0, 0.1);
+    max-width: 850px;
+    margin: 0 auto;
+    min-height: 600px;
+    position: relative;
+    overflow-y: auto;
+    max-height: 75vh;
+    /* A4 sahifa ko'rinishi */
+    border-left: 1px solid #e2e8f0;
+    border-right: 1px solid #e2e8f0;
+}
+
+/* A4 sahifa soyasi — chap va o'ng chegaralardagi qizg'ish chiziqlar */
+.doc-viewer::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 65px;
+    width: 1px;
+    height: 100%;
+    background: rgba(239, 68, 68, 0.15);
+    pointer-events: none;
+}
+
+/* Hujjat ichidagi matn elementlari */
+.doc-viewer h1 {
+    font-size: 22px;
+    font-weight: 700;
+    margin: 20px 0 12px 0;
+    color: #0f172a;
+    line-height: 1.3;
+}
+
+.doc-viewer h2 {
+    font-size: 18px;
+    font-weight: 700;
+    margin: 18px 0 10px 0;
+    color: #1e293b;
+    line-height: 1.4;
+}
+
+.doc-viewer h3 {
+    font-size: 16px;
+    font-weight: 700;
+    margin: 16px 0 8px 0;
+    color: #334155;
+    line-height: 1.4;
+}
+
+.doc-viewer h4,
+.doc-viewer h5,
+.doc-viewer h6 {
+    font-size: 14px;
+    font-weight: 700;
+    margin: 14px 0 6px 0;
+    color: #475569;
+}
+
+.doc-viewer p {
+    margin: 0 0 10px 0;
+    text-align: justify;
+    text-indent: 0;
+    hyphens: auto;
+}
+
+.doc-viewer strong, .doc-viewer b {
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.doc-viewer em, .doc-viewer i {
+    font-style: italic;
+}
+
+.doc-viewer u {
+    text-decoration: underline;
+}
+
+.doc-viewer ul, .doc-viewer ol {
+    margin: 8px 0 12px 24px;
+    padding-left: 16px;
+}
+
+.doc-viewer li {
+    margin-bottom: 4px;
+    line-height: 1.6;
+}
+
+.doc-viewer table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 13px;
+}
+
+.doc-viewer table th,
+.doc-viewer table td {
+    border: 1px solid #94a3b8;
+    padding: 8px 10px;
+    text-align: left;
+    vertical-align: top;
+}
+
+.doc-viewer table th {
+    background: #f1f5f9;
+    font-weight: 700;
+    color: #1e293b;
+}
+
+.doc-viewer table tr:nth-child(even) {
+    background: #f8fafc;
+}
+
+.doc-viewer a {
+    color: #2563eb;
+    text-decoration: underline;
+}
+
+.doc-viewer img {
+    max-width: 100%;
+    height: auto;
+    margin: 10px 0;
+}
+
+.doc-viewer blockquote {
+    margin: 12px 0;
+    padding: 10px 16px;
+    border-left: 3px solid #94a3b8;
+    background: #f8fafc;
+    color: #475569;
+    font-style: italic;
+}
+
+.doc-viewer sup {
+    font-size: 0.7em;
+    vertical-align: super;
+}
+
+.doc-viewer sub {
+    font-size: 0.7em;
+    vertical-align: sub;
+}
+
+/* =====================================================
+   XATO BELGILASH — Qizil chiziq va fon
+   ===================================================== */
+
+.doc-viewer .error-highlight {
+    background: rgba(239, 68, 68, 0.12);
+    border-bottom: 2.5px solid #ef4444;
+    padding: 1px 2px;
+    border-radius: 2px;
+    position: relative;
+    cursor: help;
+    transition: background 0.2s ease;
+    text-decoration: none;
+}
+
+.doc-viewer .error-highlight:hover {
+    background: rgba(239, 68, 68, 0.25);
+}
+
+/* Xato sababi tooltip ko'rinishida */
+.doc-viewer .error-highlight::after {
+    content: attr(data-reason);
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1e293b;
+    color: #f8fafc;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-family: 'Outfit', sans-serif;
+    white-space: normal;
+    max-width: 350px;
+    min-width: 200px;
+    text-align: left;
+    line-height: 1.5;
+    z-index: 100;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.doc-viewer .error-highlight::before {
+    content: '';
+    position: absolute;
+    bottom: calc(100% + 2px);
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: #1e293b;
+    z-index: 101;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.doc-viewer .error-highlight:hover::after,
+.doc-viewer .error-highlight:hover::before {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Xato darajasi bo'yicha ranglar */
+.doc-viewer .error-highlight[data-severity="critical"] {
+    background: rgba(220, 38, 38, 0.18);
+    border-bottom-color: #dc2626;
+    border-bottom-width: 3px;
+}
+
+.doc-viewer .error-highlight[data-severity="high"] {
+    background: rgba(239, 68, 68, 0.15);
+    border-bottom-color: #ef4444;
+}
+
+.doc-viewer .error-highlight[data-severity="medium"] {
+    background: rgba(245, 158, 11, 0.12);
+    border-bottom-color: #f59e0b;
+}
+
+/* =====================================================
+   TO'G'RILANGAN JOYLAR BELGILASH — Yashil rang
+   ===================================================== */
+
+.doc-viewer .corrected-highlight {
+    background: rgba(34, 197, 94, 0.12);
+    border-bottom: 2.5px solid #22c55e;
+    padding: 1px 2px;
+    border-radius: 2px;
+    position: relative;
+    cursor: help;
+    transition: background 0.2s ease;
+}
+
+.doc-viewer .corrected-highlight:hover {
+    background: rgba(34, 197, 94, 0.25);
+}
+
+/* To'g'rilangan joy tooltip */
+.doc-viewer .corrected-highlight::after {
+    content: attr(data-original);
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1e293b;
+    color: #f8fafc;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-family: 'Outfit', sans-serif;
+    white-space: normal;
+    max-width: 350px;
+    min-width: 200px;
+    text-align: left;
+    line-height: 1.5;
+    z-index: 100;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.doc-viewer .corrected-highlight::before {
+    content: '';
+    position: absolute;
+    bottom: calc(100% + 2px);
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: #1e293b;
+    z-index: 101;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.doc-viewer .corrected-highlight:hover::after,
+.doc-viewer .corrected-highlight:hover::before {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* =====================================================
+   HUJJAT MODAL TAB TIZIMI
+   ===================================================== */
+
+.doc-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 1.5rem;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 4px;
+    border-radius: 12px;
+    border: 1px solid var(--glass-border);
+}
+
+.doc-tab {
+    flex: 1;
+    padding: 10px 16px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-family: 'Outfit', sans-serif;
+}
+
+.doc-tab:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-main);
+}
+
+.doc-tab.active {
+    background: var(--primary);
+    color: white;
+    box-shadow: 0 2px 8px rgba(76, 99, 168, 0.4);
+}
+
+.doc-tab.active-corrected {
+    background: #16a34a;
+    color: white;
+    box-shadow: 0 2px 8px rgba(22, 163, 74, 0.4);
+}
+
+/* =====================================================
+   LEGEND — Rang belgilar tushuntirilishi
+   ===================================================== */
+
+.doc-legend {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 12px;
+    padding: 8px 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 8px;
+    border: 1px solid var(--glass-border);
+    flex-wrap: wrap;
+}
+
+.doc-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+}
+
+.doc-legend-color {
+    width: 24px;
+    height: 4px;
+    border-radius: 2px;
+}
+
+.doc-legend-color.error {
+    background: #ef4444;
+}
+
+.doc-legend-color.corrected {
+    background: #22c55e;
+}
+

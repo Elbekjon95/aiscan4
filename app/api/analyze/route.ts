@@ -5,7 +5,6 @@ import crypto from 'crypto';
 import { getSession } from '@/lib/auth';
 
 const mammoth = require('mammoth');
-const pdfParse = require('pdf-parse');
 
 export async function POST(req: NextRequest) {
     try {
@@ -43,16 +42,11 @@ export async function POST(req: NextRequest) {
         let text = '';
         let originalHtml = '';
         let originalFileBase64 = '';
+        const isPdfScanned = fileExt === 'pdf'; // PDF fayllar scanned bo'lishi mumkin
         if (fileExt === 'pdf') {
-            try {
-                const pdfData = await pdfParse(buffer);
-                text = pdfData.text || '';
-            } catch (err) {
-                console.error("pdf-parse error:", err);
-                text = '';
-            }
             // PDF faylni base64 formatida saqlash (frontend iframe uchun)
             originalFileBase64 = buffer.toString('base64');
+            // Matn ajratishga urinmaymiz — Gemini PDF ni inline qabul qilib o'zi OCR qiladi
         } else if (fileExt === 'docx') {
             const rawResult = await mammoth.extractRawText({ buffer });
             text = rawResult.value;
@@ -279,9 +273,10 @@ Javobni FAQAT QUYIDAGI JSON FORMATIDA, istisnosiz ${targetLangName} tilida qayta
   "audit_basis": ["Ushbu auditda tayanilgan aniq qonunlar va nizomlar ro'yxati"],
   "risks": ["Sinchkov tahlilda aniqlangan barcha xavflar ro'yxati"],
   "recommendations": ["Audit xulosasi asosidagi aniq va barcha harakatlar ro'yxati"],
+  "extracted_full_text": "MUHIM: Hujjatning TO'LIQ matnini shu yerga ko'chiring. PDF fayllardan OCR qilib o'qigan butun matnni, har bir sahifadagi barcha bandlar, jadvallar va ma'lumotlarni qo'shing. Bu matn keyinchalik hujjatni qayta tiklash va tuzatilgan versiyasini yaratish uchun ishlatiladi. Matnni HECH QANDAY o'zgartirmasdan, asl ko'rinishida yozing.",
   "optimized_replacements": [
      {
-        "original_phrase": "Hujjatdagi xato yoki favoritizm aniqlangan aynan o'sha gap yoki abzas matni. Bu matn asl hujjat matni bilan 100% bir xil bo'lishi shart.",
+        "original_phrase": "Hujjatdagi xato yoki favoritizm aniqlangan aynan o'sha gap yoki abzas matni. Bu matn extracted_full_text ichidagi asl matn bilan 100% bir xil bo'lishi shart.",
         "corrected_phrase": "Ushbu gap yoki abzasning to'liq to'g'rilangan, xatolar va favoritizmdan tozalangan yangi varianti."
      }
   ],
@@ -305,7 +300,7 @@ Javobni FAQAT QUYIDAGI JSON FORMATIDA, istisnosiz ${targetLangName} tilida qayta
             contents: [{ role: "user", parts: allParts }],
             generationConfig: {
                 temperature: 0.0,
-                maxOutputTokens: 8192,
+                maxOutputTokens: 65536,
                 responseMimeType: "application/json"
             }
         };
@@ -315,6 +310,12 @@ Javobni FAQAT QUYIDAGI JSON FORMATIDA, istisnosiz ${targetLangName} tilida qayta
         // Agar model ba'zan ob'ekt o'rniga array ichida ob'ekt qaytarsa:
         if (Array.isArray(resultJson) && resultJson.length > 0) {
             resultJson = resultJson[0];
+        }
+
+        // PDF uchun: Gemini o'zi OCR qilib o'qigan matnni ishlatamiz
+        if (isPdfScanned && resultJson.extracted_full_text && resultJson.extracted_full_text.length > text.length) {
+            text = resultJson.extracted_full_text;
+            console.log(`[PDF OCR] Gemini dan ${text.length.toLocaleString()} belgi matn olindi`);
         }
 
         // Reconstruct optimized version by replacing incorrect phrases in original text

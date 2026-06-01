@@ -10,9 +10,9 @@ export async function callGeminiStream(data: any, returnText: boolean = false): 
         data.generationConfig = {};
     }
     
-    // maxOutputTokens yetarlicha katta bo'lishi kerak (ayniqsa 10 ta firma uchun)
-    if (!data.generationConfig.maxOutputTokens || data.generationConfig.maxOutputTokens < 8192) {
-        data.generationConfig.maxOutputTokens = 8192; // Ko'pchilik modellar uchun barqaror chegara
+    // maxOutputTokens ni default qiymat bilan ta'minlash (agar berilmagan bo'lsa)
+    if (!data.generationConfig.maxOutputTokens) {
+        data.generationConfig.maxOutputTokens = 8192; // Default qiymat
     }
 
     let response;

@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { callGeminiStream } from '@/lib/gemini';
 import crypto from 'crypto';
 import { getSession } from '@/lib/auth';
+import { extractTextFromPDF } from '@/lib/pdfExtract';
 
 const mammoth = require('mammoth');
 
@@ -42,11 +43,50 @@ export async function POST(req: NextRequest) {
         let text = '';
         let originalHtml = '';
         let originalFileBase64 = '';
+        let pdfPageCount = 0;
         const isPdfScanned = fileExt === 'pdf'; // PDF fayllar scanned bo'lishi mumkin
         if (fileExt === 'pdf') {
             // PDF faylni base64 formatida saqlash (frontend iframe uchun)
             originalFileBase64 = buffer.toString('base64');
-            // Matn ajratishga urinmaymiz — Gemini PDF ni inline qabul qilib o'zi OCR qiladi
+            // PDF dan matnni ajratib olish (diagnostika va original_text uchun)
+            // Gemini'ga esa PDF inline yuboriladi (OCR sifatida to'liq o'qiydi)
+            try {
+                const pdfResult = await extractTextFromPDF(buffer);
+                text = pdfResult.text;
+                pdfPageCount = pdfResult.pagesCount;
+                console.log(`[PDF Text Extract] ${text.length.toLocaleString()} belgi, ${pdfPageCount} sahifa ajratib olindi`);
+            } catch (pdfErr) {
+                console.warn('[PDF Text Extract] Matn ajratishda xatolik:', pdfErr);
+                text = '';
+            }
+
+            // Agar PDF matni o'ta qisqa yoki bo'sh bo'lsa (scanned PDF), Gemini orqali alohida OCR qilamiz
+            const isPdfScannedOrShort = text.trim().length < 1000 || (pdfPageCount > 0 && text.trim().length / pdfPageCount < 150);
+            if (isPdfScannedOrShort && originalFileBase64) {
+                try {
+                    console.log(`[PDF OCR] Mahalliy matn juda qisqa (${text.length} belgi). Gemini orqali maxsus OCR ishga tushirilmoqda...`);
+                    const ocrData = {
+                        contents: [{
+                            role: "user",
+                            parts: [
+                                { text: "Transcribe all text from this PDF document completely, page by page. Do not summarize, do not skip anything. Transcribe all tables, headings, and paragraphs verbatim. Output only the extracted text." },
+                                { inlineData: { mimeType: 'application/pdf', data: originalFileBase64 } }
+                            ]
+                        }],
+                        generationConfig: {
+                            temperature: 0.0,
+                            maxOutputTokens: 65536
+                        }
+                    };
+                    const ocrText = await callGeminiStream(ocrData, true);
+                    if (ocrText && ocrText.trim().length > text.length) {
+                        text = ocrText;
+                        console.log(`[PDF OCR] Gemini OCR muvaffaqiyatli bajarildi: ${text.length.toLocaleString()} belgi ajratib olindi`);
+                    }
+                } catch (ocrErr) {
+                    console.error('[PDF OCR] Gemini maxsus OCR tahlilida xatolik:', ocrErr);
+                }
+            }
         } else if (fileExt === 'docx') {
             const rawResult = await mammoth.extractRawText({ buffer });
             text = rawResult.value;
@@ -67,9 +107,12 @@ export async function POST(req: NextRequest) {
         // PDF uchun oddiy matn qoladi (PDF o'zi inline sifatida to'liq yuboriladi)
         // Gemini 3.1 Pro 1M token kontekstni qo'llab-quvvatlaydi (~800K belgi)
         // 50-100 varoqli hujjatlarni ham to'liq o'qish uchun chegara kengaytirildi
-        const geminiText = (fileExt === 'docx' && originalHtml) 
-            ? originalHtml.substring(0, 800000) 
-            : text.substring(0, 500000);
+        const isPdfInline = fileExt === 'pdf'; // PDF Gemini'ga inline yuboriladi
+        const geminiText = isPdfInline
+            ? '' // PDF inline yuboriladi, matn prompt ichiga qo'shilmaydi
+            : (fileExt === 'docx' && originalHtml) 
+                ? originalHtml.substring(0, 800000) 
+                : text.substring(0, 500000);
         const isHtmlFormat = fileExt === 'docx' && !!originalHtml;
 
         // ============ DIAGNOSTIKA LOGLARI ============
@@ -78,7 +121,7 @@ export async function POST(req: NextRequest) {
         const totalTables = (originalHtml.match(/<table[\s>]/gi) || []).length;
         const totalHeadings = (originalHtml.match(/<h[1-6][\s>]/gi) || []).length;
         const totalListItems = (originalHtml.match(/<li[\s>]/gi) || []).length;
-        const estimatedPages = Math.ceil(text.length / 3000); // ~3000 belgi = 1 varoq
+        const estimatedPages = pdfPageCount || Math.ceil(text.length / 3000); // ~3000 belgi = 1 varoq
 
         console.log('\n╔══════════════════════════════════════════════════════════╗');
         console.log('║          📄 HUJJAT DIAGNOSTIKASI (AISCAN)              ║');
@@ -89,8 +132,8 @@ export async function POST(req: NextRequest) {
         console.log('╠══════════════════════════════════════════════════════════╣');
         console.log(`║ 📝 Oddiy matn:       ${text.length.toLocaleString()} belgi`);
         console.log(`║ 🌐 HTML matn:        ${originalHtml.length.toLocaleString()} belgi`);
-        console.log(`║ 📨 Gemini-ga yuborilgan: ${geminiText.length.toLocaleString()} belgi`);
-        console.log(`║ ✂️  Kesilganmi:       ${geminiText.length < (isHtmlFormat ? originalHtml.length : text.length) ? '⚠️ HA (matn kesildi!)' : '✅ YO\'Q (to\'liq yuborildi)'}`);
+        console.log(`║ 📨 Gemini-ga yuborilgan: ${isPdfInline ? `PDF inline (${(buffer.length / 1024).toFixed(0)} KB)` : `${geminiText.length.toLocaleString()} belgi`}`);
+        console.log(`║ ✂️  Kesilganmi:       ${isPdfInline ? '✅ YO\'Q (PDF to\'liq inline yuborildi)' : (geminiText.length < (isHtmlFormat ? originalHtml.length : text.length) ? '⚠️ HA (matn kesildi!)' : '✅ YO\'Q (to\'liq yuborildi)')}`);
         console.log('╠══════════════════════════════════════════════════════════╣');
         console.log(`║ 📃 Qatorlar soni:    ${totalLines.toLocaleString()}`);
         console.log(`║ 📖 Taxminiy varoqlar: ~${estimatedPages} varoq`);
@@ -227,7 +270,9 @@ Siz ushbu vazifalarni HUJJATNING HAR BIR BANDI bo'yicha bajarishingiz shart:
 - Hujjatdagi yuridik yoki raqamli izlarni (telefon, manzil, xos ismlar, domenlar) qidiring. DIQQAT: Agar ishtirokchilarning ma'lumotlari (tijorat takliflari) hali yuklanmagan bo'lsa, afilovlik haqida xulosa bermang, faqat potentsial xatarlarni ko'rsating.
 
 ## 3. CHIQISH FORMATI (JSON)
-Javobni FAQAT QUYIDAGI JSON FORMATIDA, istisnosiz ${targetLangName} tilida qaytaring. Javob maksimal darajada batafsil bo'lishi kerak:
+Javobni FAQAT QUYIDAGI JSON FORMATIDA, istisnosiz ${targetLangName} tilida qaytaring. Javob maksimal darajada batafsil bo'lishi kerak.
+DIQQAT: Javobda "optimized_version", "corrected_version" yoki boshqa hech qanday hujjatning to'liq matnini o'z ichiga olgan qo'shimcha maydonlarni JSONga qo'shmang! Faqatgina "optimized_replacements" maydonini bering. Hujjatning to'liq matnini o'z serverimiz o'zi tiklab oladi. Bu juda muhim, chunki to'liq matnni JSONda qaytarish tokenlar yetishmasligiga va javobning kesilib (truncated) qolishiga olib keladi.
+Ushbu cheklovga qat'iy rioya qiling.
 
 {
   "document_title": "Hujjatning matn ichidagi rasmiy nomi (masalan: Texnik topshiriq №123)",
@@ -273,10 +318,10 @@ Javobni FAQAT QUYIDAGI JSON FORMATIDA, istisnosiz ${targetLangName} tilida qayta
   "audit_basis": ["Ushbu auditda tayanilgan aniq qonunlar va nizomlar ro'yxati"],
   "risks": ["Sinchkov tahlilda aniqlangan barcha xavflar ro'yxati"],
   "recommendations": ["Audit xulosasi asosidagi aniq va barcha harakatlar ro'yxati"],
-  "extracted_full_text": "MUHIM: Hujjatning TO'LIQ matnini shu yerga ko'chiring. PDF fayllardan OCR qilib o'qigan butun matnni, har bir sahifadagi barcha bandlar, jadvallar va ma'lumotlarni qo'shing. Bu matn keyinchalik hujjatni qayta tiklash va tuzatilgan versiyasini yaratish uchun ishlatiladi. Matnni HECH QANDAY o'zgartirmasdan, asl ko'rinishida yozing.",
+  "extracted_full_text": "Ushbu maydonni bo'sh qoldiring (qat'iy ravishda \"\").",
   "optimized_replacements": [
      {
-        "original_phrase": "Hujjatdagi xato yoki favoritizm aniqlangan aynan o'sha gap yoki abzas matni. Bu matn extracted_full_text ichidagi asl matn bilan 100% bir xil bo'lishi shart.",
+        "original_phrase": "Hujjatdagi xato yoki favoritizm aniqlangan aynan o'sha gap yoki abzas matni. Bu matn asl matn bilan 100% bir xil bo'lishi shart.",
         "corrected_phrase": "Ushbu gap yoki abzasning to'liq to'g'rilangan, xatolar va favoritizmdan tozalangan yangi varianti."
      }
   ],
@@ -312,13 +357,27 @@ Javobni FAQAT QUYIDAGI JSON FORMATIDA, istisnosiz ${targetLangName} tilida qayta
             resultJson = resultJson[0];
         }
 
-        // PDF uchun: Gemini o'zi OCR qilib o'qigan matnni ishlatamiz
-        if (isPdfScanned && resultJson.extracted_full_text && resultJson.extracted_full_text.length > text.length) {
-            text = resultJson.extracted_full_text;
-            console.log(`[PDF OCR] Gemini dan ${text.length.toLocaleString()} belgi matn olindi`);
-        }
+        // Serverdagi to'liq matnni JSONga yuklaymiz (Gemini uni qayta yozishi shart emas, kesh qisqardi)
+        resultJson.extracted_full_text = text;
 
         // Reconstruct optimized version by replacing incorrect phrases in original text
+        const escapeRegExp = (str: string) => {
+            return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        };
+
+        const getFuzzyRegex = (searchStr: string) => {
+            const clean = searchStr.trim();
+            const escaped = escapeRegExp(clean);
+            const parts = escaped.split(/\s+/).filter(p => p.length > 0);
+            const mappedParts = parts.map(part => {
+                return part
+                    .replace(/['’‘’`´ʻʼ]/g, "['’‘’`´ʻʼ]?")
+                    .replace(/["“”«»]/g, '["“”«»]?');
+            });
+            const pattern = mappedParts.join('\\s*');
+            return new RegExp(pattern, 'gi');
+        };
+
         let optimizedText = text;
         if (resultJson.optimized_replacements && Array.isArray(resultJson.optimized_replacements)) {
             resultJson.optimized_replacements.forEach((rep: any) => {
@@ -326,9 +385,10 @@ Javobni FAQAT QUYIDAGI JSON FORMATIDA, istisnosiz ${targetLangName} tilida qayta
                     const orig = rep.original_phrase.trim();
                     const corr = rep.corrected_phrase.trim();
                     if (orig.length > 0) {
-                        if (optimizedText.includes(orig)) {
-                            optimizedText = optimizedText.replace(orig, corr);
-                        } else {
+                        try {
+                            const regex = getFuzzyRegex(orig);
+                            optimizedText = optimizedText.replace(regex, corr);
+                        } catch(e) {
                             optimizedText = optimizedText.split(orig).join(corr);
                         }
                     }
@@ -341,16 +401,25 @@ Javobni FAQAT QUYIDAGI JSON FORMATIDA, istisnosiz ${targetLangName} tilida qayta
         resultJson.original_file_base64 = originalFileBase64 || '';
 
         // Diagnostika ma'lumotlari — frontendda ko'rsatish uchun
+        const diagSentLabel = isPdfInline 
+            ? `PDF inline (${Math.round(buffer.length / 1024)} KB)` 
+            : `${geminiText.length.toLocaleString()} belgi`;
+        const diagIsTruncated = isPdfInline 
+            ? false  // PDF to'liq inline yuboriladi
+            : geminiText.length < (isHtmlFormat ? originalHtml.length : text.length);
+
         resultJson.doc_diagnostics = {
             file_name: file.name,
             file_size_kb: Math.round(buffer.length / 1024),
             file_type: fileExt?.toUpperCase(),
             raw_text_length: text.length,
             html_length: originalHtml.length,
-            sent_to_gemini: geminiText.length,
-            is_truncated: geminiText.length < (isHtmlFormat ? originalHtml.length : text.length),
-            total_lines: text.split('\n').length,
-            estimated_pages: Math.ceil(text.length / 3000),
+            sent_to_gemini: isPdfInline ? buffer.length : geminiText.length,
+            sent_to_gemini_label: diagSentLabel,
+            is_truncated: diagIsTruncated,
+            is_pdf_inline: !!isPdfInline,
+            total_lines: text ? text.split('\n').length : 0,
+            estimated_pages: pdfPageCount || Math.ceil((text.length || 1) / 3000),
             paragraphs: (originalHtml.match(/<p[\s>]/gi) || []).length,
             tables: (originalHtml.match(/<table[\s>]/gi) || []).length,
             headings: (originalHtml.match(/<h[1-6][\s>]/gi) || []).length,

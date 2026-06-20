@@ -1,64 +1,58 @@
 // lib/pdfExtract.ts
-// pdfjs-dist (Mozilla PDF.js) yordamida PDFdan matn ajratish
-// pdf-parse v2 matnni to'g'ri ajratmayotganligi sababli to'g'ridan-to'g'ri pdfjs-dist ishlatamiz
+// pdf-parse v2 (PDFParse) yordamida PDFdan matn ajratish (Next.js Turbopack xatoligini aylanib o'tish uchun CLI orqali ishlaydi)
+import { execFile } from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 
-export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
-    // pdfjs-dist legacy versiyasi Node.js muhitida ishlaydi (canvas kerak emas)
-    const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.mjs');
-
-    const uint8Array = new Uint8Array(buffer);
-    const loadingTask = pdfjsLib.getDocument({
-        data: uint8Array,
-        useSystemFonts: true,
-    });
-
-    const pdfDoc = await loadingTask.promise;
-    const totalPages = pdfDoc.numPages;
-    const allText: string[] = [];
-
-    for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
-        const page = await pdfDoc.getPage(pageNum);
-        const content = await page.getTextContent();
-
-        // Har bir sahifadagi matn elementlarini birlashtirish
-        let lastY: number | null = null;
-        const pageLines: string[] = [];
-        let currentLine = '';
-
-        for (const item of content.items) {
-            if (!('str' in item)) continue;
-            const textItem = item as { str: string; transform: number[] };
-
-            // Y koordinatasi o'zgarsa (yangi qator)
-            const y = textItem.transform[5];
-            if (lastY !== null && Math.abs(y - lastY) > 2) {
-                if (currentLine.trim()) {
-                    pageLines.push(currentLine.trim());
-                }
-                currentLine = textItem.str;
-            } else {
-                // Bir xil qatorda bo'lsa, bo'shliq bilan qo'shish
-                if (currentLine && textItem.str && !currentLine.endsWith(' ') && !textItem.str.startsWith(' ')) {
-                    currentLine += ' ' + textItem.str;
-                } else {
-                    currentLine += textItem.str;
-                }
-            }
-            lastY = y;
-        }
-
-        // Oxirgi qatorni qo'shish
-        if (currentLine.trim()) {
-            pageLines.push(currentLine.trim());
-        }
-
-        if (pageLines.length > 0) {
-            allText.push(pageLines.join('\n'));
-        }
-
-        page.cleanup();
-    }
-
-    await pdfDoc.destroy();
-    return allText.join('\n\n');
+export interface PDFExtractResult {
+    text: string;
+    pagesCount: number;
 }
+
+export async function extractTextFromPDF(buffer: Buffer): Promise<PDFExtractResult> {
+    return new Promise((resolve, reject) => {
+        // Vaqtinchalik fayl yaratish
+        const tempDir = os.tmpdir();
+        const tempFilePath = path.join(tempDir, `aiscan_temp_${Date.now()}_${Math.random().toString(36).substring(7)}.pdf`);
+        
+        try {
+            fs.writeFileSync(tempFilePath, buffer);
+        } catch (writeErr) {
+            return reject(new Error(`Vaqtinchalik fayl yozishda xatolik: ${(writeErr as Error).message}`));
+        }
+
+        const cliPath = path.join(process.cwd(), 'lib', 'pdfExtractCli.js');
+        
+        execFile('node', [cliPath, tempFilePath], { maxBuffer: 1024 * 1024 * 50 }, (error, stdout, stderr) => {
+            // Har doim vaqtinchalik faylni o'chiramiz
+            try {
+                if (fs.existsSync(tempFilePath)) {
+                    fs.unlinkSync(tempFilePath);
+                }
+            } catch (unlinkErr) {
+                console.error('[pdfExtract] Vaqtinchalik faylni o\'chirishda xatolik:', unlinkErr);
+            }
+
+            if (error) {
+                console.error('[pdfExtract] CLI xatosi:', stderr || error.message);
+                return reject(new Error(stderr || error.message));
+            }
+
+            try {
+                const result = JSON.parse(stdout.trim());
+                if (result.success) {
+                    resolve({
+                        text: result.text || '',
+                        pagesCount: result.pagesCount || 0
+                    });
+                } else {
+                    reject(new Error(result.error || 'Noma\'lum xatolik'));
+                }
+            } catch (parseErr) {
+                reject(new Error(`CLI javobini o'qishda xatolik: ${(parseErr as Error).message}`));
+            }
+        });
+    });
+}
+

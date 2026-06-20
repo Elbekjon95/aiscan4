@@ -133,8 +133,12 @@ export default function AnalysisResults({ data, lang, file }: { data: any, lang:
         }
     };
 
-    const isPdf = file ? file.type === 'application/pdf' : !!data.original_file_base64;
-    const isDocx = file ? file.name?.toLowerCase().endsWith('.docx') : false;
+    const isPdf = file 
+        ? (file.type === 'application/pdf' || file.name?.toLowerCase().endsWith('.pdf')) 
+        : (data.file_name?.toLowerCase().endsWith('.pdf') || !!data.original_file_base64);
+    const isDocx = file 
+        ? file.name?.toLowerCase().endsWith('.docx') 
+        : (data.file_name?.toLowerCase().endsWith('.docx') || !!data.original_html);
     const hasOriginalHtml = !!data.original_html;
     const hasOriginalText = !!data.original_text;
     const hasReplacements = data.optimized_replacements && data.optimized_replacements.length > 0;
@@ -153,6 +157,89 @@ export default function AnalysisResults({ data, lang, file }: { data: any, lang:
     };
 
     /**
+     * Matnni normallashtirish — ortiqcha bo'shliqlar, tirnoq turlari, boshqa belgilarni standartlashtirish
+     * Bu matching aniqligini oshiradi
+     */
+    const normalizeText = (str: string) => {
+        return str
+            .replace(/[\u00A0\u2000-\u200B\u202F\u205F\u3000]/g, ' ')  // barcha bo'shliq turlari
+            .replace(/[\u2018\u2019\u201A\u201B]/g, "'")  // turli tirnoqlar
+            .replace(/[\u201C\u201D\u201E\u201F]/g, '"')  // turli qo'shtirnoqlar
+            .replace(/[\u2013\u2014]/g, '-')  // em/en dash
+            .replace(/\s+/g, ' ')  // ortiqcha bo'shliqlarni bitta qilish
+            .trim();
+    };
+
+    /**
+     * O'zbek tili apostroflari va turli xil qo'shtirnoqlarga mos keladigan fuzzy regex pattern yaratish
+     */
+    const getFuzzyRegexPattern = (searchStr: string, isHtml: boolean = false): RegExp => {
+        const clean = searchStr.trim();
+        const escaped = escapeRegExp(clean);
+        const parts = escaped.split(/\s+/).filter(p => p.length > 0);
+        
+        const mappedParts = parts.map(part => {
+            return part
+                .replace(/['’‘’`´ʻʼ]/g, "['’‘’`´ʻʼ]?") // Apostrof ixtiyoriy yoki har qanday variantda
+                .replace(/["“”«»]/g, '["“”«»]?');    // Qo'shtirnoq ixtiyoriy yoki har qanday variantda
+        });
+        
+        const separator = isHtml 
+            ? '(?:\\s|<[^>]*>)*'
+            : '\\s*';
+            
+        const pattern = mappedParts.join(separator);
+        return new RegExp(pattern, 'gi');
+    };
+
+    /**
+     * Matn ichidan quote ni topish — avval aniq, keyin fuzzy qidirish
+     * HTML-escaped matn ichida ishlaydi
+     */
+    const findAndHighlight = (
+        html: string, 
+        searchText: string, 
+        wrapFn: (match: string) => string
+    ): string => {
+        if (!searchText || searchText.length < 3) return html;
+        
+        // 1-usul: Fuzzy regex yordamida izlash (case-insensitive va apostroflarga chidamli)
+        try {
+            const regex = getFuzzyRegexPattern(searchText, false);
+            const newHtml = html.replace(regex, (match: string) => {
+                if (match.indexOf('class="error-highlight"') !== -1 || match.indexOf('class="corrected-highlight"') !== -1) {
+                    return match;
+                }
+                return wrapFn(match);
+            });
+            if (newHtml !== html) return newHtml;
+        } catch(e) {}
+
+        // 2-usul: Zaxira sifatida to'g'ridan-to'g'ri qidirish
+        if (html.includes(searchText)) {
+            return html.split(searchText).join(wrapFn(searchText));
+        }
+
+        // 3-usul: Qisqa fragment zaxirasi
+        const normalizedSearch = normalizeText(searchText);
+        if (normalizedSearch.length > 40) {
+            const shortSearch = normalizedSearch.substring(0, 40);
+            try {
+                const regex = getFuzzyRegexPattern(shortSearch, false);
+                const newHtml = html.replace(regex, (match: string) => {
+                    if (match.indexOf('class="error-highlight"') !== -1 || match.indexOf('class="corrected-highlight"') !== -1) {
+                        return match;
+                    }
+                    return wrapFn(match);
+                });
+                if (newHtml !== html) return newHtml;
+            } catch(e) {}
+        }
+
+        return html;
+    };
+
+    /**
      * HTML matn ichidan xato joylarni qizil bilan belgilash
      * original_html (mammoth-dan) ustida ishlaydi
      */
@@ -164,24 +251,17 @@ export default function AnalysisResults({ data, lang, file }: { data: any, lang:
             if (ev.quote && ev.quote.trim().length > 4) {
                 const quote = ev.quote.trim();
                 try {
-                    // HTML teglarini hisobga olmasdan matn ichidan qidirish
-                    // Avval oddiy text match qilamiz (teglar o'rtasida bo'lmagan matn)
-                    const escaped = escapeRegExp(quote);
-                    const parts = escaped.split(/\s+/);
-                    // Dynamic whitespace + possible HTML tags between words
-                    const regexPattern = parts.join('(?:\\s|<[^>]*>)*');
-                    const regex = new RegExp(regexPattern, 'gi');
-
+                    const regex = getFuzzyRegexPattern(quote, true);
                     const severity = ev.severity || 'medium';
                     const reason = escapeHtmlAttr(ev.reason || '');
 
                     result = result.replace(regex, (match: string) => {
-                        // Agar match ichida ochilgan va yopilmagan teglar bo'lsa, ularni to'g'ri wrap qilish
+                        if (match.indexOf('class="error-highlight"') !== -1 || match.indexOf('class="corrected-highlight"') !== -1) {
+                            return match;
+                        }
                         return `<span class="error-highlight" data-severity="${severity}" data-reason="${reason}">${match}</span>`;
                     });
-                } catch(e) {
-                    // Regex xatosi — o'tkazib yuboramiz
-                }
+                } catch(e) {}
             }
         });
 
@@ -203,14 +283,13 @@ export default function AnalysisResults({ data, lang, file }: { data: any, lang:
                 if (corrected.length < 3) return;
 
                 try {
-                    const escaped = escapeRegExp(corrected);
-                    const parts = escaped.split(/\s+/);
-                    const regexPattern = parts.join('(?:\\s|<[^>]*>)*');
-                    const regex = new RegExp(regexPattern, 'gi');
-
+                    const regex = getFuzzyRegexPattern(corrected, true);
                     const originalAttr = escapeHtmlAttr(`Eski variant: ${original}`);
 
                     result = result.replace(regex, (match: string) => {
+                        if (match.indexOf('class="corrected-highlight"') !== -1 || match.indexOf('class="error-highlight"') !== -1) {
+                            return match;
+                        }
                         return `<span class="corrected-highlight" data-original="${originalAttr}">${match}</span>`;
                     });
                 } catch(e) {}
@@ -237,18 +316,43 @@ export default function AnalysisResults({ data, lang, file }: { data: any, lang:
                     .replace(/&/g, '&amp;')
                     .replace(/</g, '&lt;')
                     .replace(/>/g, '&gt;');
-                try {
-                    const escaped = escapeRegExp(quoteClean);
-                    const parts = escaped.split(/\s+/);
-                    const regex = new RegExp(parts.join('(?:[\\s\\n\\r\\t]|<br\\/??>)*'), 'gi');
 
-                    const severity = ev.severity || 'medium';
-                    const reason = escapeHtmlAttr(ev.reason || '');
+                const severity = ev.severity || 'medium';
+                const reason = escapeHtmlAttr(ev.reason || '');
 
-                    html = html.replace(regex, (match: string) => {
-                        return `<span class="error-highlight" data-severity="${severity}" data-reason="${reason}">${match}</span>`;
-                    });
-                } catch(e) {}
+                html = findAndHighlight(html, quoteClean, (match) => 
+                    `<span class="error-highlight" data-severity="${severity}" data-reason="${reason}">${match}</span>`
+                );
+            }
+        });
+
+        return html;
+    };
+
+    /**
+     * Tuzatilgan versiya uchun plain text ni highlight qilish (PDF fayllar uchun)
+     * corrected_phrase larni yashil bilan belgilaydi
+     */
+    const renderCorrectedPlainText = (correctedText: string, replacements: any[]) => {
+        if (!correctedText) return '';
+        let html = correctedText
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/\n/g, '<br/>');
+
+        replacements?.forEach((rep: any) => {
+            if (rep.corrected_phrase && rep.corrected_phrase.trim().length > 3) {
+                const corrected = rep.corrected_phrase.trim()
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;');
+                const original = rep.original_phrase?.trim() || '';
+                const originalAttr = escapeHtmlAttr(`Eski variant: ${original}`);
+
+                html = findAndHighlight(html, corrected, (match) => 
+                    `<span class="corrected-highlight" data-original="${originalAttr}">${match}</span>`
+                );
             }
         });
 
@@ -259,20 +363,16 @@ export default function AnalysisResults({ data, lang, file }: { data: any, lang:
      * Tuzatilgan versiya HTML ni yaratish
      */
     const buildCorrectedHtml = () => {
+        // DOCX uchun — HTML bor
         if (hasOriginalHtml && hasReplacements) {
-            // Original HTML da original_phrase -> corrected_phrase almashtirish
             let correctedHtml = data.original_html;
             data.optimized_replacements.forEach((rep: any) => {
                 if (rep.original_phrase && rep.corrected_phrase) {
                     const orig = rep.original_phrase.trim();
                     const corr = rep.corrected_phrase.trim();
                     if (orig.length > 0) {
-                        // HTML teglarini saqlagan holda matnni almashtirish
                         try {
-                            const escaped = escapeRegExp(orig);
-                            const parts = escaped.split(/\s+/);
-                            const regexPattern = parts.join('(?:\\s|<[^>]*>)*');
-                            const regex = new RegExp(regexPattern, 'gi');
+                            const regex = getFuzzyRegexPattern(orig, true);
                             correctedHtml = correctedHtml.replace(regex, corr);
                         } catch(e) {
                             correctedHtml = correctedHtml.split(orig).join(corr);
@@ -280,9 +380,15 @@ export default function AnalysisResults({ data, lang, file }: { data: any, lang:
                     }
                 }
             });
-            // Tuzatilgan joylarni yashil bilan belgilash
             return highlightCorrectionsInHtml(correctedHtml, data.optimized_replacements);
         }
+        
+        // PDF / Plain text uchun — corrected_version matnida highlight qilish
+        if (hasReplacements && (data.corrected_version || data.optimized_version)) {
+            const correctedText = data.corrected_version || data.optimized_version;
+            return renderCorrectedPlainText(correctedText, data.optimized_replacements);
+        }
+
         return '';
     };
 
@@ -315,7 +421,7 @@ export default function AnalysisResults({ data, lang, file }: { data: any, lang:
 
         // Ikkala ro'yxatni birlashtirish
         const allEvidences = [
-            ...(data.favoritism_evidence || []),
+            ...(Array.isArray(data.favoritism_evidence) ? data.favoritism_evidence : []),
             ...replacementEvidences
         ];
 
@@ -330,7 +436,19 @@ export default function AnalysisResults({ data, lang, file }: { data: any, lang:
     const correctedDocHtml = buildCorrectedHtml();
     const originalDocHtml = getOriginalDocHtml();
     const canShowDocViewer = hasOriginalHtml || hasOriginalText || isPdf;
-    const canShowCorrected = correctedDocHtml.length > 0 || (data.corrected_version || data.optimized_version);
+    const canShowCorrected = correctedDocHtml.length > 0 || !!(data.corrected_version || data.optimized_version);
+
+    console.log('AnalysisResults render debug:', { 
+        isPdf, 
+        isDocx, 
+        hasOriginalHtml, 
+        hasOriginalText, 
+        canShowDocViewer, 
+        canShowCorrected, 
+        correctedDocHtmlLen: correctedDocHtml.length,
+        originalDocHtmlLen: originalDocHtml.length,
+        dataKeys: Object.keys(data || {}) 
+    });
 
     return (
         <div className="analysis-grid">
@@ -455,7 +573,7 @@ export default function AnalysisResults({ data, lang, file }: { data: any, lang:
                             </div>
                             <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.6rem', borderRadius: '0.5rem' }}>
                                 <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>📨 {t.sent}</div>
-                                <div style={{ color: '#22c55e', fontWeight: 700 }}>{data.doc_diagnostics.sent_to_gemini?.toLocaleString()} {t.char}</div>
+                                <div style={{ color: '#22c55e', fontWeight: 700 }}>{data.doc_diagnostics.sent_to_gemini_label || `${data.doc_diagnostics.sent_to_gemini?.toLocaleString()} ${t.char}`}</div>
                             </div>
                             <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.6rem', borderRadius: '0.5rem' }}>
                                 <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>📊 {t.tables}</div>

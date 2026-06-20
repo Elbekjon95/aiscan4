@@ -1,6 +1,3 @@
-// lib/pdfExtract.ts
-// pdf-parse v2 (PDFParse) yordamida PDFdan matn ajratish (Next.js Turbopack xatoligini aylanib o'tish uchun CLI orqali ishlaydi)
-import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -11,6 +8,7 @@ export interface PDFExtractResult {
 }
 
 export async function extractTextFromPDF(buffer: Buffer): Promise<PDFExtractResult> {
+    const { execFile } = require('child_process');
     return new Promise((resolve, reject) => {
         // Vaqtinchalik fayl yaratish
         const tempDir = os.tmpdir();

@@ -20,9 +20,9 @@ export async function extractTextFromPDF(buffer: Buffer): Promise<PDFExtractResu
             return reject(new Error(`Vaqtinchalik fayl yozishda xatolik: ${(writeErr as Error).message}`));
         }
 
-        const cliPath = path.join(process.cwd(), 'lib', 'pdfExtractCli.js');
+        const cliPath = path.join(process.cwd(), ...['lib', 'pdfExtractCli.js']);
         
-        execFile('node', [cliPath, tempFilePath], { maxBuffer: 1024 * 1024 * 50 }, (error, stdout, stderr) => {
+        execFile('node', [cliPath, tempFilePath], { maxBuffer: 1024 * 1024 * 50 }, (error: any, stdout: string, stderr: string) => {
             // Har doim vaqtinchalik faylni o'chiramiz
             try {
                 if (fs.existsSync(tempFilePath)) {

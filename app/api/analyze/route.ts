@@ -39,6 +39,134 @@ export async function POST(req: NextRequest) {
             }
         }
 
+        // Translation cache check - fayl bor lekin boshqa tilda bo'lsa
+        const existingOtherLang = await prisma.request.findFirst({ 
+            where: {
+                file_hash: fileHash, 
+                file_name: file.name,
+                analysis_type: 'document',
+            }
+        });
+
+        if (existingOtherLang && existingOtherLang.full_analysis) {
+            const cachedData = (existingOtherLang.full_analysis as any) || {};
+            if (cachedData.original_text) {
+                console.log(`[Cache Translation] Fayl topildi (til: ${existingOtherLang.language}). Uni '${lang}' tiliga tarjima qilamiz...`);
+                
+                // Vaqtincha katta hajmli matnlarni olib tashlaymiz (token va vaqtni tejash uchun)
+                const largeFields = {
+                    original_text: cachedData.original_text,
+                    original_html: cachedData.original_html,
+                    extracted_full_text: cachedData.extracted_full_text,
+                    original_file_base64: cachedData.original_file_base64,
+                    optimized_version: cachedData.optimized_version,
+                };
+                
+                const dataToTranslate = { ...cachedData };
+                delete dataToTranslate.original_text;
+                delete dataToTranslate.original_html;
+                delete dataToTranslate.extracted_full_text;
+                delete dataToTranslate.original_file_base64;
+                delete dataToTranslate.optimized_version;
+
+                const targetLangName = lang === 'uz' ? "O'zbek tili" : (lang === 'ru' ? "Rus tili" : "Ingliz tili");
+                const translationPrompt = `
+Siz JSON formatidagi ma'lumotlarni tarjima qiluvchi avtomatlashtirilgan tizimsiz.
+Quyidagi JSON obyektidagi barcha matnli qiymatlarni (title, content, details, reason, status, xulosalar, original_phrase, corrected_phrase) qat'iyan ${targetLangName}ga tarjima qiling.
+DIQQAT: 
+1. Hech qanday raqamlar, baholar (score, percentage), ID lar va kalit so'zlarni (JSON keys) umuman o'zgartirmang!
+2. Faqat qiymatlarni (values) tarjima qiling.
+3. Natijani faqat JSON formatida qaytaring.
+
+JSON:
+${JSON.stringify(dataToTranslate, null, 2)}
+`;
+                const tData = {
+                    contents: [{ role: "user", parts: [{ text: translationPrompt }] }],
+                    generationConfig: {
+                        temperature: 0.0,
+                        maxOutputTokens: 65536,
+                        responseMimeType: "application/json"
+                    }
+                };
+                
+                try {
+                    let translatedJson = await callGeminiStream(tData);
+                    if (Array.isArray(translatedJson) && translatedJson.length > 0) {
+                        translatedJson = translatedJson[0];
+                    }
+
+                    // Katta maydonlarni joyiga qaytaramiz
+                    translatedJson.original_text = largeFields.original_text;
+                    translatedJson.original_html = largeFields.original_html;
+                    translatedJson.extracted_full_text = largeFields.extracted_full_text;
+                    translatedJson.original_file_base64 = largeFields.original_file_base64;
+
+                    // Optimized textni qayta yig'amiz
+                    let optimizedText = largeFields.original_text;
+                    const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    const getFuzzyRegex = (searchStr: string) => {
+                        const clean = searchStr.trim();
+                        const escaped = escapeRegExp(clean);
+                        const parts = escaped.split(/\s+/).filter(p => p.length > 0);
+                        const mappedParts = parts.map(part => part.replace(/['’‘’`´ʻʼ]/g, "['’‘’`´ʻʼ]?").replace(/["“”«»]/g, '["“”«»]?'));
+                        const pattern = mappedParts.join('\\s*');
+                        return new RegExp(pattern, 'gi');
+                    };
+
+                    if (translatedJson.optimized_replacements && Array.isArray(translatedJson.optimized_replacements)) {
+                        translatedJson.optimized_replacements.forEach((rep: any) => {
+                            if (rep.original_phrase && rep.corrected_phrase) {
+                                const orig = rep.original_phrase.trim();
+                                const corr = rep.corrected_phrase.trim();
+                                if (orig.length > 0) {
+                                    try {
+                                        const regex = getFuzzyRegex(orig);
+                                        optimizedText = optimizedText.replace(regex, corr);
+                                    } catch(e) {
+                                        optimizedText = optimizedText.split(orig).join(corr);
+                                    }
+                                }
+                            }
+                        });
+                    }
+                    translatedJson.optimized_version = optimizedText;
+
+                    // Saqlaymiz va qaytaramiz
+                    const session = await getSession();
+                    const airport = session.airport || 'TAS';
+                    let auditorName = '777';
+                    if (session.userId) {
+                        const user = await prisma.user.findUnique({ where: { id: session.userId } });
+                        if (user) auditorName = user.role === 'super_admin' ? '777' : user.username;
+                    }
+
+                    const newReq = await prisma.request.create({
+                        data: {
+                            file_name: file.name,
+                            file_type: fileExt,
+                            file_hash: fileHash,
+                            analysis_score: translatedJson.total_score || translatedJson.score || existingOtherLang.analysis_score || 0,
+                            compliance_score: translatedJson.compliance_score || existingOtherLang.compliance_score || 0,
+                            favoritism_score: translatedJson.favoritism_score || existingOtherLang.favoritism_score || 0,
+                            analysis_type: 'document',
+                            language: lang,
+                            airport: airport,
+                            auditor_name: auditorName,
+                            corrected_version: optimizedText || existingOtherLang.corrected_version || null,
+                            full_analysis: translatedJson
+                        }
+                    });
+
+                    translatedJson.corrected_version = optimizedText;
+                    return NextResponse.json({ ...translatedJson, success: true, is_cached: true, is_translated: true, request_id: newReq.id, file_name: file.name, auditor_name: auditorName });
+                } catch (tErr) {
+                    console.error("Translation cache xatosi:", tErr);
+                    // Agar tarjima o'xshamasa, shunchaki noldan tahlil qilishga o'tib ketsin (pastki kodlarga tushadi)
+                }
+            }
+        }
+
         // Extract Text + Original HTML (for DOCX)
         let text = '';
         let originalHtml = '';

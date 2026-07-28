@@ -7,7 +7,7 @@ export const sessionOptions = {
   cookieName: 'aiscan_session',
   ttl: 15 * 60, // 15 daqiqa
   cookieOptions: {
-    secure: process.env.NODE_ENV === 'production',
+    secure: process.env.COOKIE_SECURE === 'true',
   },
 };
 

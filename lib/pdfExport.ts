@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import QRCode from 'qrcode';
 import { getTranslation } from './translations';
 
 /**
@@ -34,7 +35,6 @@ export const exportToPDF = async (data: any, lang: string) => {
   if (robotoBase64) {
     try {
       doc.addFileToVFS('Roboto-Regular.ttf', robotoBase64);
-      // Hack: Register the same font for both styles
       doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
       doc.addFont('Roboto-Regular.ttf', 'Roboto', 'bold'); 
       doc.setFont('Roboto', 'normal');
@@ -51,6 +51,36 @@ export const exportToPDF = async (data: any, lang: string) => {
   const currentFont = fontLoaded ? 'Roboto' : 'helvetica';
   const pageWidth = doc.internal.pageSize.width;
   const pageHeight = doc.internal.pageSize.height;
+
+  const shortId = data.request_id ? String(data.request_id).substring(0, 10).toUpperCase() : 'N/A';
+  const auditorName = data.auditor_name || '777';
+  const docTitleValue = data.document_title || data.file_name || 'N/A';
+
+  // Construct a concise, high-contrast, instantly scannable QR payload
+  const qrPayload = `AISCAN ELECTRONIC AUDIT VERIFIED
+Hujjat: ${docTitleValue.substring(0, 45)}
+ID: #${shortId}
+Auditor: ${auditorName}
+Sana: ${new Date().toLocaleDateString()}
+Jami Ball: ${data.total_score || data.score || 0}%
+Muvofiqlik: ${data.compliance_score || 0}%
+Tarafkashlik: ${data.favoritism_score || 0}%`;
+
+  // Generate ultra-clean, high-contrast QR Code Data URL with standard quiet zone
+  let qrDataUrl = '';
+  try {
+    qrDataUrl = await QRCode.toDataURL(qrPayload, {
+      margin: 2,
+      width: 400,
+      errorCorrectionLevel: 'M',
+      color: {
+        dark: '#0F172A', // Dark navy black for maximum scanner recognition
+        light: '#FFFFFF'  // Pure white background
+      }
+    });
+  } catch (e) {
+    console.warn('QR Code generation failed:', e);
+  }
 
   // --- HEADER SECTION ---
   doc.setFillColor(30, 41, 59);
@@ -69,10 +99,7 @@ export const exportToPDF = async (data: any, lang: string) => {
   const dateStr = `${t('table_date')}: ${new Date().toLocaleString()}`;
   doc.text(dateStr, pageWidth - 15, 20, { align: 'right' });
   
-  const shortId = data.request_id ? String(data.request_id).substring(0, 10).toUpperCase() : 'N/A';
   doc.text(`ID: #${shortId}`, pageWidth - 15, 27, { align: 'right' });
-
-  const auditorName = data.auditor_name || '777';
   doc.text(`Auditor: ${auditorName}`, pageWidth - 15, 34, { align: 'right' });
 
   // --- MAIN TITLE ---
@@ -82,8 +109,6 @@ export const exportToPDF = async (data: any, lang: string) => {
   doc.text(t('label_main').toUpperCase(), 15, 52);
 
   // --- DOCUMENT TITLE ---
-  const docTitleValue = data.document_title || data.file_name || 'N/A';
-  
   autoTable(doc, {
     startY: 58,
     margin: { left: 15, right: 15 },
@@ -97,7 +122,7 @@ export const exportToPDF = async (data: any, lang: string) => {
   });
 
   let currentY = (doc as any).lastAutoTable.finalY + 10;
-  const tableMargin = { top: 60, bottom: 45, left: 15, right: 15 };
+  const tableMargin = { top: 60, bottom: 50, left: 15, right: 15 };
 
   // --- CONTENT SECTION ---
   autoTable(doc, {
@@ -132,7 +157,7 @@ export const exportToPDF = async (data: any, lang: string) => {
 
   if (data.sections) {
     data.sections.forEach((section: any) => {
-      if (currentY > pageHeight - 65) {
+      if (currentY > pageHeight - 70) {
         doc.addPage();
         currentY = 45;
       }
@@ -153,7 +178,7 @@ export const exportToPDF = async (data: any, lang: string) => {
     });
   }
 
-  // --- FOOTER & STAMP ---
+  // --- FOOTER & HIGH-CONTRAST SCANNABLE QR BADGE ---
   const totalPages = (doc as any).internal.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
@@ -167,25 +192,40 @@ export const exportToPDF = async (data: any, lang: string) => {
     const pageStr = `${t('page')} ${i} / ${totalPages}`;
     doc.text(pageStr, pageWidth / 2, pageHeight - 7, { align: 'center' });
 
-    const stampX = pageWidth - 55;
-    const stampY = pageHeight - 40;
+    // Official Verification Badge Box
+    const stampWidth = 76;
+    const stampHeight = 28;
+    const stampX = pageWidth - stampWidth - 15;
+    const stampY = pageHeight - stampHeight - 18;
+
+    doc.setFillColor(255, 255, 255);
     doc.setDrawColor(30, 58, 138); 
     doc.setLineWidth(0.6);
-    doc.roundedRect(stampX, stampY, 40, 22, 1, 1, 'D');
+    doc.roundedRect(stampX, stampY, stampWidth, stampHeight, 1.5, 1.5, 'FD');
     doc.setLineWidth(0.2);
-    doc.roundedRect(stampX + 1, stampY + 1, 38, 20, 0.5, 0.5, 'D');
+    doc.roundedRect(stampX + 0.8, stampY + 0.8, stampWidth - 1.6, stampHeight - 1.6, 1, 1, 'D');
+
+    if (qrDataUrl) {
+      // 25mm x 25mm crisp QR Code image with proper margin inside
+      doc.addImage(qrDataUrl, 'PNG', stampX + stampWidth - 26.5, stampY + 1.5, 25, 25);
+    }
 
     doc.setTextColor(30, 58, 138);
     doc.setFont(currentFont, 'bold');
-    doc.setFontSize(11);
-    doc.text('AISCAN', stampX + 20, stampY + 8, { align: 'center' });
-    doc.setFontSize(11);
-    doc.text('AISCAN', stampX + 20, stampY + 8, { align: 'center' });
-    doc.setFontSize(6);
+    doc.setFontSize(10);
+    doc.text('AISCAN', stampX + 3.5, stampY + 7);
+    
+    doc.setFontSize(6.5);
+    doc.setFont(currentFont, 'bold');
+    doc.setTextColor(15, 23, 42);
+    doc.text('OFFICIAL VERIFIED AUDIT', stampX + 3.5, stampY + 12);
+
     doc.setFont(currentFont, 'normal');
-    doc.text('ELECTRONIC AUDIT', stampX + 20, stampY + 13, { align: 'center' });
-    doc.text('VERIFIED SYSTEM', stampX + 20, stampY + 17, { align: 'center' });
-    doc.text(new Date().toLocaleDateString(), stampX + 20, stampY + 20, { align: 'center' });
+    doc.setFontSize(6);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`ID: #${shortId}`, stampX + 3.5, stampY + 16.5);
+    doc.text(`Auditor: ${auditorName}`, stampX + 3.5, stampY + 20.5);
+    doc.text(`Score: ${data.total_score || data.score || 0}%`, stampX + 3.5, stampY + 24.5);
   }
 
   doc.save(`AISCAN_AUDIT_${data.request_id || 'REPORT'}.pdf`);
@@ -218,6 +258,28 @@ export const exportCorrectedToPDF = async (text: string, title: string) => {
   const pageHeight = doc.internal.pageSize.height;
   const margin = 15;
   const maxLineWidth = pageWidth - (margin * 2);
+
+  // Concise, scannable QR payload for corrected PDF
+  const qrPayload = `AISCAN OPTIMIZED DOCUMENT VERIFIED
+Hujjat: ${(title || 'Optimallashtirilgan Hujjat').substring(0, 45)}
+Sana: ${new Date().toLocaleDateString()}
+Status: VERIFIED & AUTHENTICATED BY AISCAN SYSTEM`;
+
+  // Generate high-contrast, clean QR Code Data URL
+  let qrDataUrl = '';
+  try {
+    qrDataUrl = await QRCode.toDataURL(qrPayload, {
+      margin: 2,
+      width: 400,
+      errorCorrectionLevel: 'M',
+      color: {
+        dark: '#0F172A',
+        light: '#FFFFFF'
+      }
+    });
+  } catch (e) {
+    console.warn('QR Code generation failed:', e);
+  }
 
   let currentY = 20;
 
@@ -286,7 +348,7 @@ export const exportCorrectedToPDF = async (text: string, title: string) => {
     const wrappedLines = doc.splitTextToSize(textToDraw, maxLineWidth);
 
     for (let wrappedLine of wrappedLines) {
-      if (currentY > pageHeight - 20) {
+      if (currentY > pageHeight - 35) {
         doc.addPage();
         if (fontLoaded) doc.setFont('Roboto', style);
         currentY = 20;
@@ -295,6 +357,44 @@ export const exportCorrectedToPDF = async (text: string, title: string) => {
       currentY += isHeading ? 7 : 6;
     }
     currentY += 2; // spacing after paragraph
+  }
+
+  // Draw QR Stamp on all pages of optimized document
+  const totalPages = (doc as any).internal.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+
+    const stampWidth = 76;
+    const stampHeight = 28;
+    const stampX = pageWidth - stampWidth - 15;
+    const stampY = pageHeight - stampHeight - 10;
+
+    doc.setFillColor(255, 255, 255);
+    doc.setDrawColor(30, 58, 138); 
+    doc.setLineWidth(0.6);
+    doc.roundedRect(stampX, stampY, stampWidth, stampHeight, 1.5, 1.5, 'FD');
+    doc.setLineWidth(0.2);
+    doc.roundedRect(stampX + 0.8, stampY + 0.8, stampWidth - 1.6, stampHeight - 1.6, 1, 1, 'D');
+
+    if (qrDataUrl) {
+      doc.addImage(qrDataUrl, 'PNG', stampX + stampWidth - 26.5, stampY + 1.5, 25, 25);
+    }
+
+    doc.setTextColor(30, 58, 138);
+    doc.setFont(currentFont, 'bold');
+    doc.setFontSize(10);
+    doc.text('AISCAN', stampX + 3.5, stampY + 7);
+    
+    doc.setFontSize(6.5);
+    doc.setFont(currentFont, 'bold');
+    doc.setTextColor(15, 23, 42);
+    doc.text('VERIFIED OPTIMIZED DOC', stampX + 3.5, stampY + 12);
+
+    doc.setFont(currentFont, 'normal');
+    doc.setFontSize(6);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`AUTHENTICATED SYSTEM`, stampX + 3.5, stampY + 16.5);
+    doc.text(`Date: ${new Date().toLocaleDateString()}`, stampX + 3.5, stampY + 20.5);
   }
 
   doc.save(`${(title || 'hujjat').replace(/[^a-zA-Z0-9А-Яа-яЎўҚқҒғҲҳ_.-]/g, '_')}_optimized.pdf`);

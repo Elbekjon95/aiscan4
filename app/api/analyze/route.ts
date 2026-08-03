@@ -18,31 +18,102 @@ export async function POST(req: NextRequest) {
         }
 
         const buffer = Buffer.from(await file.arrayBuffer());
-        const fileHash = crypto.createHash('md5').update(buffer).digest('hex');
         const fileExt = file.name.split('.').pop()?.toLowerCase();
+        const binaryHash = crypto.createHash('md5').update(buffer).digest('hex');
 
-        // Cached check — faqat file_hash + language bo'yicha (fayl nomi muhim emas!)
-        // Shu tarzda fayl nomi o'zgartirilsa ham, bir xil kontent keshdan qaytariladi.
+        // 1-BOSQICH: Avval matnni fayldan (PDF yoki DOCX) ajratib olamiz
+        let text = '';
+        let originalHtml = '';
+        let originalFileBase64 = '';
+        let pdfPageCount = 0;
+
+        if (fileExt === 'pdf') {
+            originalFileBase64 = buffer.toString('base64');
+            try {
+                const pdfResult = await extractTextFromPDF(buffer);
+                text = pdfResult.text;
+                pdfPageCount = pdfResult.pagesCount;
+                console.log(`[PDF Text Extract] ${text.length.toLocaleString()} belgi, ${pdfPageCount} sahifa ajratib olindi`);
+            } catch (pdfErr) {
+                console.warn('[PDF Text Extract] Matn ajratishda xatolik:', pdfErr);
+                text = '';
+            }
+
+            // Agar PDF matni o'ta qisqa bo'lsa (scanned PDF), Gemini OCR qilamiz
+            const isPdfScannedOrShort = text.trim().length < 1000 || (pdfPageCount > 0 && text.trim().length / pdfPageCount < 150);
+            if (isPdfScannedOrShort && originalFileBase64) {
+                try {
+                    console.log(`[PDF OCR] Mahalliy matn juda qisqa (${text.length} belgi). Gemini orqali OCR...`);
+                    const ocrData = {
+                        contents: [{
+                            role: "user",
+                            parts: [
+                                { text: "Transcribe all text from this PDF document completely, page by page. Do not summarize, do not skip anything. Transcribe all tables, headings, and paragraphs verbatim. Output only the extracted text." },
+                                { inlineData: { mimeType: 'application/pdf', data: originalFileBase64 } }
+                            ]
+                        }],
+                        generationConfig: {
+                            temperature: 0.0,
+                            maxOutputTokens: 65536
+                        }
+                    };
+                    const ocrText = await callGeminiStream(ocrData, true);
+                    if (ocrText && ocrText.trim().length > text.length) {
+                        text = ocrText;
+                    }
+                } catch (ocrErr) {
+                    console.error('[PDF OCR] Gemini OCR xatosi:', ocrErr);
+                }
+            }
+        } else if (fileExt === 'docx') {
+            const rawResult = await mammoth.extractRawText({ buffer });
+            text = rawResult.value;
+            const htmlResult = await mammoth.convertToHtml({ buffer }, {
+                styleMap: [
+                    "p[style-name='Heading 1'] => h1:fresh",
+                    "p[style-name='Heading 2'] => h2:fresh",
+                    "p[style-name='Heading 3'] => h3:fresh",
+                ]
+            });
+            originalHtml = htmlResult.value;
+        } else {
+            return NextResponse.json({ success: false, error: 'Faqat PDF va DOCX fayllari ruxsat etiladi.' }, { status: 400 });
+        }
+
+        // 2-BOSQICH: Matn kontenti asosida umumiy MD5 Hash yaratamiz (1.pdf va 1.docx uchun bir xil matn = bir xil hash)
+        const normalizedTextForHash = text.replace(/\s+/g, ' ').trim().toLowerCase();
+        const contentHash = crypto.createHash('md5').update(normalizedTextForHash || buffer).digest('hex');
+
+        // 3-BOSQICH: KESH TEKSHIRUVI — matn hashi yoki binar hash bo'yicha bazada bormi?
         const existing = await prisma.request.findFirst({ 
             where: {
-                file_hash: fileHash, 
+                OR: [
+                    { file_hash: contentHash },
+                    { file_hash: binaryHash }
+                ],
                 analysis_type: 'document',
                 language: lang,
             }
         });
         
         if (existing) {
+            console.log(`[Cache Hit] Hujjat matni keshda topildi! (Hash: ${contentHash}, Fayl: ${file.name})`);
             const cachedData = (existing.full_analysis as any) || {};
             if (cachedData.original_text) {
                 cachedData.corrected_version = existing.corrected_version || cachedData.optimized_version || cachedData.corrected_version;
-                return NextResponse.json({ ...cachedData, success: true, is_cached: true, request_id: existing.id });
+                if (originalHtml && !cachedData.original_html) cachedData.original_html = originalHtml;
+                if (originalFileBase64 && !cachedData.original_file_base64) cachedData.original_file_base64 = originalFileBase64;
+                return NextResponse.json({ ...cachedData, success: true, is_cached: true, request_id: existing.id, file_name: file.name });
             }
         }
 
-        // Translation cache check - fayl bor lekin boshqa tilda bo'lsa (fayl nomi muhim emas)
+        // Translation cache check - fayl bor lekin boshqa tilda bo'lsa
         const existingOtherLang = await prisma.request.findFirst({ 
             where: {
-                file_hash: fileHash, 
+                OR: [
+                    { file_hash: contentHash },
+                    { file_hash: binaryHash }
+                ],
                 analysis_type: 'document',
             }
         });
@@ -50,14 +121,13 @@ export async function POST(req: NextRequest) {
         if (existingOtherLang && existingOtherLang.full_analysis) {
             const cachedData = (existingOtherLang.full_analysis as any) || {};
             if (cachedData.original_text) {
-                console.log(`[Cache Translation] Fayl topildi (til: ${existingOtherLang.language}). Uni '${lang}' tiliga tarjima qilamiz...`);
+                console.log(`[Cache Translation] Fayl matni topildi (til: ${existingOtherLang.language}). Uni '${lang}' tiliga tarjima qilamiz...`);
                 
-                // Vaqtincha katta hajmli matnlarni olib tashlaymiz (token va vaqtni tejash uchun)
                 const largeFields = {
                     original_text: cachedData.original_text,
-                    original_html: cachedData.original_html,
+                    original_html: originalHtml || cachedData.original_html,
                     extracted_full_text: cachedData.extracted_full_text,
-                    original_file_base64: cachedData.original_file_base64,
+                    original_file_base64: originalFileBase64 || cachedData.original_file_base64,
                     optimized_version: cachedData.optimized_version,
                 };
                 
@@ -95,13 +165,11 @@ ${JSON.stringify(dataToTranslate, null, 2)}
                         translatedJson = translatedJson[0];
                     }
 
-                    // Katta maydonlarni joyiga qaytaramiz
                     translatedJson.original_text = largeFields.original_text;
                     translatedJson.original_html = largeFields.original_html;
                     translatedJson.extracted_full_text = largeFields.extracted_full_text;
                     translatedJson.original_file_base64 = largeFields.original_file_base64;
 
-                    // Optimized textni qayta yig'amiz
                     let optimizedText = largeFields.original_text;
                     const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                     const getFuzzyRegex = (searchStr: string) => {
@@ -131,7 +199,6 @@ ${JSON.stringify(dataToTranslate, null, 2)}
                     }
                     translatedJson.optimized_version = optimizedText;
 
-                    // Saqlaymiz va qaytaramiz
                     const session = await getSession();
                     const airport = session.airport || 'TAS';
                     let auditorName = '777';
@@ -144,7 +211,7 @@ ${JSON.stringify(dataToTranslate, null, 2)}
                         data: {
                             file_name: file.name,
                             file_type: fileExt,
-                            file_hash: fileHash,
+                            file_hash: contentHash,
                             analysis_score: translatedJson.total_score || translatedJson.score || existingOtherLang.analysis_score || 0,
                             compliance_score: translatedJson.compliance_score || existingOtherLang.compliance_score || 0,
                             favoritism_score: translatedJson.favoritism_score || existingOtherLang.favoritism_score || 0,
@@ -161,73 +228,8 @@ ${JSON.stringify(dataToTranslate, null, 2)}
                     return NextResponse.json({ ...translatedJson, success: true, is_cached: true, is_translated: true, request_id: newReq.id, file_name: file.name, auditor_name: auditorName });
                 } catch (tErr) {
                     console.error("Translation cache xatosi:", tErr);
-                    // Agar tarjima o'xshamasa, shunchaki noldan tahlil qilishga o'tib ketsin (pastki kodlarga tushadi)
                 }
             }
-        }
-
-        // Extract Text + Original HTML (for DOCX)
-        let text = '';
-        let originalHtml = '';
-        let originalFileBase64 = '';
-        let pdfPageCount = 0;
-        const isPdfScanned = fileExt === 'pdf'; // PDF fayllar scanned bo'lishi mumkin
-        if (fileExt === 'pdf') {
-            // PDF faylni base64 formatida saqlash (frontend iframe uchun)
-            originalFileBase64 = buffer.toString('base64');
-            // PDF dan matnni ajratib olish (diagnostika va original_text uchun)
-            // Gemini'ga esa PDF inline yuboriladi (OCR sifatida to'liq o'qiydi)
-            try {
-                const pdfResult = await extractTextFromPDF(buffer);
-                text = pdfResult.text;
-                pdfPageCount = pdfResult.pagesCount;
-                console.log(`[PDF Text Extract] ${text.length.toLocaleString()} belgi, ${pdfPageCount} sahifa ajratib olindi`);
-            } catch (pdfErr) {
-                console.warn('[PDF Text Extract] Matn ajratishda xatolik:', pdfErr);
-                text = '';
-            }
-
-            // Agar PDF matni o'ta qisqa yoki bo'sh bo'lsa (scanned PDF), Gemini orqali alohida OCR qilamiz
-            const isPdfScannedOrShort = text.trim().length < 1000 || (pdfPageCount > 0 && text.trim().length / pdfPageCount < 150);
-            if (isPdfScannedOrShort && originalFileBase64) {
-                try {
-                    console.log(`[PDF OCR] Mahalliy matn juda qisqa (${text.length} belgi). Gemini orqali maxsus OCR ishga tushirilmoqda...`);
-                    const ocrData = {
-                        contents: [{
-                            role: "user",
-                            parts: [
-                                { text: "Transcribe all text from this PDF document completely, page by page. Do not summarize, do not skip anything. Transcribe all tables, headings, and paragraphs verbatim. Output only the extracted text." },
-                                { inlineData: { mimeType: 'application/pdf', data: originalFileBase64 } }
-                            ]
-                        }],
-                        generationConfig: {
-                            temperature: 0.0,
-                            maxOutputTokens: 65536
-                        }
-                    };
-                    const ocrText = await callGeminiStream(ocrData, true);
-                    if (ocrText && ocrText.trim().length > text.length) {
-                        text = ocrText;
-                        console.log(`[PDF OCR] Gemini OCR muvaffaqiyatli bajarildi: ${text.length.toLocaleString()} belgi ajratib olindi`);
-                    }
-                } catch (ocrErr) {
-                    console.error('[PDF OCR] Gemini maxsus OCR tahlilida xatolik:', ocrErr);
-                }
-            }
-        } else if (fileExt === 'docx') {
-            const rawResult = await mammoth.extractRawText({ buffer });
-            text = rawResult.value;
-            // Original formatlash bilan HTML olish
-            const htmlResult = await mammoth.convertToHtml({ buffer }, {
-                styleMap: [
-                    "p[style-name='Heading 1'] => h1:fresh",
-                    "p[style-name='Heading 2'] => h2:fresh",
-                    "p[style-name='Heading 3'] => h3:fresh",
-                ]
-            });
-            originalHtml = htmlResult.value;
-        } else {
-            return NextResponse.json({ success: false, error: 'Faqat PDF va DOCX fayllari ruxsat etiladi.' }, { status: 400 });
         }
 
         // DOCX uchun HTML formatdagi matn ishlatamiz (jadvallar, ro'yxatlar saqlanadi)
@@ -312,7 +314,7 @@ ${JSON.stringify(dataToTranslate, null, 2)}
         const previousRequest = await prisma.request.findFirst({
             where: {
                 file_name: file.name,
-                file_hash: { not: fileHash },  // ← Faqat BOSHQA versiyalar (o'zgartirilgan fayl)
+                file_hash: { not: contentHash },  // ← Faqat BOSHQA versiyalar (o'zgartirilgan fayl)
                 analysis_type: 'document',
                 language: lang,
                 airport: airport
@@ -564,7 +566,7 @@ Ushbu cheklovga qat'iy rioya qiling.
             data: {
                 file_name: file.name,
                 file_type: fileExt,
-                file_hash: fileHash,
+                file_hash: contentHash,
                 analysis_score: resultJson.total_score || resultJson.score || 0,
                 compliance_score: resultJson.compliance_score || 0,
                 favoritism_score: resultJson.favoritism_score || 0,

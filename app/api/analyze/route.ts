@@ -80,24 +80,70 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ success: false, error: 'Faqat PDF va DOCX fayllari ruxsat etiladi.' }, { status: 400 });
         }
 
-        // 2-BOSQICH: Matn kontenti asosida umumiy MD5 Hash yaratamiz (1.pdf va 1.docx uchun bir xil matn = bir xil hash)
-        const normalizedTextForHash = text.replace(/\s+/g, ' ').trim().toLowerCase();
-        const contentHash = crypto.createHash('md5').update(normalizedTextForHash || buffer).digest('hex');
+        // 2-BOSQICH: SMART FINGERPRINT VA MATN SIMILARITY MATNINI TAYYORLASH
+        // PDF va DOCX matnlarida sahifa raqamlari va formatlash farq qilishi mumkin.
+        // getDocumentFingerprint — tinish belgilari, sahifa raqamlari va ortiqcha bo'shliqlarsiz saralangan betakror so'zlarni hashlaydi.
+        const getDocumentFingerprint = (str: string): string => {
+            if (!str) return '';
+            const clean = str.replace(/<[^>]*>/g, ' ').replace(/[^\p{L}\p{N}\s]/gu, ' ').toLowerCase();
+            const words = clean.split(/\s+/).filter(w => w.length > 2 && isNaN(Number(w)));
+            const uniqueSortedWords = Array.from(new Set(words)).sort();
+            return crypto.createHash('md5').update(uniqueSortedWords.join(' ')).digest('hex');
+        };
 
-        // 3-BOSQICH: KESH TEKSHIRUVI — matn hashi yoki binar hash bo'yicha bazada bormi?
-        const existing = await prisma.request.findFirst({ 
+        const calculateTextSimilarity = (str1: string, str2: string): number => {
+            const getWords = (s: string) => {
+                const clean = s.replace(/<[^>]*>/g, ' ').replace(/[^\p{L}\p{N}\s]/gu, ' ').toLowerCase();
+                return new Set(clean.split(/\s+/).filter(w => w.length > 2 && isNaN(Number(w))));
+            };
+            const set1 = getWords(str1);
+            const set2 = getWords(str2);
+            if (set1.size === 0 || set2.size === 0) return 0;
+            let intersection = 0;
+            set1.forEach(w => { if (set2.has(w)) intersection++; });
+            const union = set1.size + set2.size - intersection;
+            return union > 0 ? intersection / union : 0;
+        };
+
+        const contentHash = getDocumentFingerprint(text);
+        const rawTextHash = crypto.createHash('md5').update(text.replace(/\s+/g, ' ').trim().toLowerCase() || buffer).digest('hex');
+
+        // 3-BOSQICH: KESH TEKSHIRUVI (Hash + Matn Mantiqiy O'xshashligi)
+        let existing = await prisma.request.findFirst({ 
             where: {
                 OR: [
                     { file_hash: contentHash },
+                    { file_hash: rawTextHash },
                     { file_hash: binaryHash }
                 ],
                 analysis_type: 'document',
                 language: lang,
             }
         });
+
+        // Agar aniq hash mos kelmasa, matn o'xshashligini (Similarity >= 80%) tekshiramiz:
+        if (!existing && text.length > 50) {
+            const recentRequests = await prisma.request.findMany({
+                where: { analysis_type: 'document', language: lang },
+                orderBy: { created_at: 'desc' },
+                take: 30
+            });
+
+            for (const req of recentRequests) {
+                const cachedText = (req.full_analysis as any)?.original_text || (req.full_analysis as any)?.extracted_full_text || '';
+                if (cachedText) {
+                    const similarity = calculateTextSimilarity(text, cachedText);
+                    if (similarity >= 0.80) { // 80% va undan ortiq so'zlar mos kelsa = bir xil hujjat!
+                        console.log(`[Smart Similarity Cache Hit] Fayl: '${file.name}' va Keshdagi: '${req.file_name}' moslik: ${Math.round(similarity * 100)}%`);
+                        existing = req;
+                        break;
+                    }
+                }
+            }
+        }
         
         if (existing) {
-            console.log(`[Cache Hit] Hujjat matni keshda topildi! (Hash: ${contentHash}, Fayl: ${file.name})`);
+            console.log(`[Cache Hit] Hujjat keshdan olindi! (ID: ${existing.id}, Fayl: ${file.name})`);
             const cachedData = (existing.full_analysis as any) || {};
             if (cachedData.original_text) {
                 cachedData.corrected_version = existing.corrected_version || cachedData.optimized_version || cachedData.corrected_version;
@@ -236,12 +282,10 @@ ${JSON.stringify(dataToTranslate, null, 2)}
         // PDF uchun oddiy matn qoladi (PDF o'zi inline sifatida to'liq yuboriladi)
         // Gemini 3.1 Pro 1M token kontekstni qo'llab-quvvatlaydi (~800K belgi)
         // 50-100 varoqli hujjatlarni ham to'liq o'qish uchun chegara kengaytirildi
-        const isPdfInline = fileExt === 'pdf'; // PDF Gemini'ga inline yuboriladi
-        const geminiText = isPdfInline
-            ? '' // PDF inline yuboriladi, matn prompt ichiga qo'shilmaydi
-            : (fileExt === 'docx' && originalHtml) 
-                ? originalHtml.substring(0, 800000) 
-                : text.substring(0, 500000);
+        const isPdfInline = fileExt === 'pdf'; // PDF Gemini'ga ham inline yuboriladi
+        const geminiText = (fileExt === 'docx' && originalHtml) 
+            ? originalHtml.substring(0, 800000) 
+            : text.substring(0, 500000);
         const isHtmlFormat = fileExt === 'docx' && !!originalHtml;
 
         // ============ DIAGNOSTIKA LOGLARI ============

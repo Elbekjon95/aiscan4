@@ -38,7 +38,7 @@ export async function GET(
             errorCorrectionLevel: 'H', // Yuqori xato to'g'rilash darajasi
         });
 
-        return new NextResponse(qrBuffer, {
+        return new NextResponse(new Uint8Array(qrBuffer), {
             status: 200,
             headers: {
                 'Content-Type': 'image/png',

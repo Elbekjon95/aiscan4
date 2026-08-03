@@ -56,26 +56,25 @@ export const exportToPDF = async (data: any, lang: string) => {
   const auditorName = data.auditor_name || '777';
   const docTitleValue = data.document_title || data.file_name || 'N/A';
 
-  // Construct a concise, high-contrast, instantly scannable QR payload
-  const qrPayload = `AISCAN ELECTRONIC AUDIT VERIFIED
-Hujjat: ${docTitleValue.substring(0, 45)}
-ID: #${shortId}
-Auditor: ${auditorName}
-Sana: ${new Date().toLocaleDateString()}
-Jami Ball: ${data.total_score || data.score || 0}%
-Muvofiqlik: ${data.compliance_score || 0}%
-Tarafkashlik: ${data.favoritism_score || 0}%`;
+  // QR code URL: skan qilinganda to'g'ridan-to'g'ri tahlil natijasi sahifasi ochiladi
+  // NEXT_PUBLIC_BASE_URL o'rnatilgan bo'lsa — shu ishlatiladi (production server uchun)
+  // Aks holda window.location.origin — bu localhost da ham, serverda ham to'g'ri ishlaydi
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL
+    || (typeof window !== 'undefined' ? window.location.origin : '');
+  const reportUrl = data.request_id
+    ? `${baseUrl}/report/${data.request_id}`
+    : `${baseUrl}/`;
 
-  // Generate ultra-clean, high-contrast QR Code Data URL with standard quiet zone
+  // QR code generatsiya — URL yoziladi, skan qilganda brauzer ochiladi
   let qrDataUrl = '';
   try {
-    qrDataUrl = await QRCode.toDataURL(qrPayload, {
+    qrDataUrl = await QRCode.toDataURL(reportUrl, {
       margin: 2,
       width: 400,
       errorCorrectionLevel: 'M',
       color: {
-        dark: '#0F172A', // Dark navy black for maximum scanner recognition
-        light: '#FFFFFF'  // Pure white background
+        dark: '#0F172A',
+        light: '#FFFFFF'
       }
     });
   } catch (e) {
@@ -218,7 +217,7 @@ Tarafkashlik: ${data.favoritism_score || 0}%`;
     doc.setFontSize(6.5);
     doc.setFont(currentFont, 'bold');
     doc.setTextColor(15, 23, 42);
-    doc.text('OFFICIAL VERIFIED AUDIT', stampX + 3.5, stampY + 12);
+    doc.text('SCAN FOR FULL REPORT', stampX + 3.5, stampY + 12);
 
     doc.setFont(currentFont, 'normal');
     doc.setFontSize(6);

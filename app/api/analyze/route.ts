@@ -21,11 +21,11 @@ export async function POST(req: NextRequest) {
         const fileHash = crypto.createHash('md5').update(buffer).digest('hex');
         const fileExt = file.name.split('.').pop()?.toLowerCase();
 
-        // Cached check — file_hash + file_name + language bo'yicha
+        // Cached check — faqat file_hash + language bo'yicha (fayl nomi muhim emas!)
+        // Shu tarzda fayl nomi o'zgartirilsa ham, bir xil kontent keshdan qaytariladi.
         const existing = await prisma.request.findFirst({ 
             where: {
                 file_hash: fileHash, 
-                file_name: file.name,
                 analysis_type: 'document',
                 language: lang,
             }
@@ -39,11 +39,10 @@ export async function POST(req: NextRequest) {
             }
         }
 
-        // Translation cache check - fayl bor lekin boshqa tilda bo'lsa
+        // Translation cache check - fayl bor lekin boshqa tilda bo'lsa (fayl nomi muhim emas)
         const existingOtherLang = await prisma.request.findFirst({ 
             where: {
                 file_hash: fileHash, 
-                file_name: file.name,
                 analysis_type: 'document',
             }
         });
@@ -306,10 +305,14 @@ ${JSON.stringify(dataToTranslate, null, 2)}
             });
         }
 
-        // Check if there was a previous audit for a file with the same name (but different hash, otherwise cached check above would match)
+        // Avvalgi tahlil konteksti: Faqat BOSHQA hash bilan (ya'ni hujjat o'zgartirilgan bo'lsa) ko'rsatiladi.
+        // Bir xil hash bo'lsa, yuqoridagi kesh tekshiruvida qaytarib yuborilgan bo'lardi.
+        // Fayl nomi bo'yicha EMAS, balki bir xil airport + til bo'yicha oldingi versiyani topamiz.
+        // MUHIM: file_hash != fileHash sharti — agar bir xil faylni qayta yuklasa, avvalgi natija ko'rsatilmaydi!
         const previousRequest = await prisma.request.findFirst({
             where: {
                 file_name: file.name,
+                file_hash: { not: fileHash },  // ← Faqat BOSHQA versiyalar (o'zgartirilgan fayl)
                 analysis_type: 'document',
                 language: lang,
                 airport: airport

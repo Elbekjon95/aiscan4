@@ -51,3 +51,24 @@ scratch_*
 models_info.json
 get_models.mjs
 *.html
+
+# PPTX va taqdimot fayllar
+*.pptx
+/pptx/
+
+# Taqdimot generatsiya skriptlari
+generate_pptx.js
+generate_premium_pptx.js
+clean_update_pptx.js
+perfect_presentation_fix.js
+perfect_rebuild_pptx.js
+rich_update_pptx.js
+ultimate_presentation_fix.js
+update_existing_pptx.js
+check.mjs
+check_reqs.js
+clean_cache.js
+clear_all_requests.js
+reset.mjs
+gen_b64.js
+proxy.ts

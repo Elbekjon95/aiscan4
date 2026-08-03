@@ -26,6 +26,7 @@
     "next": "16.2.2",
     "pdf-parse": "^2.4.5",
     "pg": "^8.20.0",
+    "pptxgenjs": "^4.0.1",
     "qrcode": "^1.5.4",
     "react": "19.2.4",
     "react-chartjs-2": "^5.3.1",

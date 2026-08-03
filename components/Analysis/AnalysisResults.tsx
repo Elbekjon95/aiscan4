@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { getTranslation } from '@/lib/translations';
-import { Search, Tag, ShieldCheck, AlertTriangle, XOctagon, FileDown, BookOpen, X, Eye, FileText, CheckCircle } from 'lucide-react';
+import { Search, Tag, ShieldCheck, AlertTriangle, XOctagon, FileDown, BookOpen, X, Eye, FileText, CheckCircle, QrCode } from 'lucide-react';
 import { exportToPDF } from '@/lib/pdfExport';
 
 export default function AnalysisResults({ data, lang, file }: { data: any, lang: string, file?: File | null }) {
@@ -10,6 +10,9 @@ export default function AnalysisResults({ data, lang, file }: { data: any, lang:
     const [pdfSrc, setPdfSrc] = useState<string | null>(null);
     const [basePdfUrl, setBasePdfUrl] = useState<string | null>(null);
     const [isDownloading, setIsDownloading] = useState(false);
+    const [showQrModal, setShowQrModal] = useState(false);
+    const [qrImageUrl, setQrImageUrl] = useState<string | null>(null);
+    const [qrLoading, setQrLoading] = useState(false);
 
     // Initialize PDF view if file is a PDF
     useEffect(() => {
@@ -451,6 +454,7 @@ export default function AnalysisResults({ data, lang, file }: { data: any, lang:
     });
 
     return (
+        <>
         <div className="analysis-grid">
             {data.is_cached && (
                 <div style={{ textAlign: 'center', color: 'var(--success)', gridColumn: '1 / -1', marginBottom: '1rem', fontStyle: 'italic' }}>
@@ -473,7 +477,34 @@ export default function AnalysisResults({ data, lang, file }: { data: any, lang:
                             {getTranslation(lang, 'btn_download_pdf')}
                         </button>
 
-                        {/* 2. View Original Document (Modal with tabs) */}
+                        {/* 2. QR Code tugmasi */}
+                        {data.request_id && (
+                            <button
+                                onClick={async () => {
+                                    setShowQrModal(true);
+                                    if (!qrImageUrl) {
+                                        setQrLoading(true);
+                                        try {
+                                            const res = await fetch(`/api/qr/${data.request_id}`);
+                                            if (!res.ok) throw new Error('QR olishda xatolik');
+                                            const blob = await res.blob();
+                                            setQrImageUrl(URL.createObjectURL(blob));
+                                        } catch (e) {
+                                            console.error(e);
+                                        } finally {
+                                            setQrLoading(false);
+                                        }
+                                    }
+                                }}
+                                className="btn btn-secondary"
+                                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 1.2rem', fontSize: '0.9rem', border: '1px solid #a855f7', background: 'rgba(168,85,247,0.08)', color: '#a855f7', cursor: 'pointer' }}
+                            >
+                                <QrCode size={16} />
+                                QR Code
+                            </button>
+                        )}
+
+                        {/* 3. View Original Document (Modal with tabs) */}
                         {canShowDocViewer && (
                             <button 
                                 onClick={() => { setDocModalTab('original'); setShowDocModal(true); }}
@@ -485,7 +516,7 @@ export default function AnalysisResults({ data, lang, file }: { data: any, lang:
                             </button>
                         )}
 
-                        {/* 3. View Corrected Version */}
+                        {/* 4. View Corrected Version */}
                         {canShowCorrected && (
                             <button 
                                 onClick={() => { setDocModalTab('corrected'); setShowDocModal(true); }}
@@ -497,7 +528,7 @@ export default function AnalysisResults({ data, lang, file }: { data: any, lang:
                             </button>
                         )}
 
-                        {/* 4. Download Corrected */}
+                        {/* 5. Download Corrected */}
                         {canShowCorrected && (
                             <button 
                                 onClick={isDocx ? handleDownloadCorrectedDocx : handleDownloadCorrectedFromText}
@@ -898,5 +929,120 @@ export default function AnalysisResults({ data, lang, file }: { data: any, lang:
                 </div>
             ))}
         </div>
+
+            {/* ══════ QR CODE MODAL ══════ */}
+            {showQrModal && (
+                <div
+                    style={{
+                        position: 'fixed', inset: 0, zIndex: 9999,
+                        background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        padding: '1rem',
+                    }}
+                    onClick={() => setShowQrModal(false)}
+                >
+                    <div
+                        style={{
+                            background: 'linear-gradient(135deg, #1e293b, #0f172a)',
+                            border: '1px solid rgba(168,85,247,0.4)',
+                            borderRadius: '1.5rem', padding: '2rem',
+                            maxWidth: 420, width: '100%',
+                            boxShadow: '0 0 60px rgba(168,85,247,0.2)',
+                            textAlign: 'center',
+                        }}
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {/* Sarlavha */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <QrCode size={22} color="#a855f7" />
+                                <span style={{ fontWeight: 700, fontSize: '1.1rem', color: '#f1f5f9' }}>
+                                    Audit QR Kodi
+                                </span>
+                            </div>
+                            <button
+                                onClick={() => setShowQrModal(false)}
+                                style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '0.25rem' }}
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {/* QR Code rasmi */}
+                        <div style={{
+                            background: 'white', borderRadius: '1rem',
+                            padding: '1rem', display: 'inline-block',
+                            boxShadow: '0 0 30px rgba(168,85,247,0.3)',
+                            marginBottom: '1.25rem',
+                        }}>
+                            {qrLoading ? (
+                                <div style={{
+                                    width: 200, height: 200,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    color: '#94a3b8', flexDirection: 'column', gap: '0.5rem',
+                                }}>
+                                    <div style={{
+                                        width: 32, height: 32, border: '3px solid rgba(168,85,247,0.3)',
+                                        borderTop: '3px solid #a855f7', borderRadius: '50%',
+                                    }} />
+                                    <span style={{ fontSize: '0.8rem' }}>Yuklanmoqda...</span>
+                                </div>
+                            ) : qrImageUrl ? (
+                                <img
+                                    src={qrImageUrl}
+                                    alt="AISCAN Audit QR Code"
+                                    style={{ width: 200, height: 200, display: 'block' }}
+                                />
+                            ) : (
+                                <div style={{ width: 200, height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444', fontSize: '0.85rem' }}>
+                                    QR olishda xatolik
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Tavsif */}
+                        <p style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: '0.75rem', lineHeight: 1.6 }}>
+                            📱 Ushbu QR codeni skan qiling — to&apos;liq audit hisoboti va PDF yuklash imkoni ochiladi
+                        </p>
+
+                        {/* Link */}
+                        {data.request_id && (
+                            <div style={{
+                                background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.2)',
+                                borderRadius: '0.5rem', padding: '0.5rem 0.75rem', marginBottom: '1.25rem',
+                            }}>
+                                <a
+                                    href={`/report/${data.request_id}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={{ color: '#a855f7', fontSize: '0.75rem', wordBreak: 'break-all', textDecoration: 'none' }}
+                                >
+                                    /report/{data.request_id}
+                                </a>
+                            </div>
+                        )}
+
+                        {/* Yuklab olish tugmasi */}
+                        {qrImageUrl && (
+                            <a
+                                href={qrImageUrl}
+                                download={`AISCAN_QR_${data.request_id || 'report'}.png`}
+                                style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '0.5rem',
+                                    background: 'linear-gradient(135deg, #a855f7, #7c3aed)',
+                                    color: 'white', textDecoration: 'none',
+                                    padding: '0.6rem 1.5rem', borderRadius: '0.6rem',
+                                    fontSize: '0.9rem', fontWeight: 600,
+                                    boxShadow: '0 0 20px rgba(168,85,247,0.3)',
+                                }}
+                            >
+                                <FileDown size={16} />
+                                QR PNG Yuklab Olish
+                            </a>
+                        )}
+                    </div>
+                </div>
+            )}
+        </>
     );
 }

@@ -121,19 +121,19 @@ export async function POST(req: NextRequest) {
             }
         });
 
-        // Agar aniq hash mos kelmasa, matn o'xshashligini (Similarity >= 80%) tekshiramiz:
-        if (!existing && text.length > 50) {
+        // Agar aniq hash mos kelmasa, matn o'xshashligini (Similarity >= 50%) tekshiramiz:
+        if (!existing && text.length > 20) {
             const recentRequests = await prisma.request.findMany({
                 where: { analysis_type: 'document', language: lang },
                 orderBy: { created_at: 'desc' },
-                take: 30
+                take: 50
             });
 
             for (const req of recentRequests) {
-                const cachedText = (req.full_analysis as any)?.original_text || (req.full_analysis as any)?.extracted_full_text || '';
+                const cachedText = (req.full_analysis as any)?.original_text || (req.full_analysis as any)?.extracted_full_text || req.corrected_version || '';
                 if (cachedText) {
                     const similarity = calculateTextSimilarity(text, cachedText);
-                    if (similarity >= 0.80) { // 80% va undan ortiq so'zlar mos kelsa = bir xil hujjat!
+                    if (similarity >= 0.50) { // 50% va undan ortiq so'zlar mos kelsa = bir xil hujjat!
                         console.log(`[Smart Similarity Cache Hit] Fayl: '${file.name}' va Keshdagi: '${req.file_name}' moslik: ${Math.round(similarity * 100)}%`);
                         existing = req;
                         break;
@@ -510,13 +510,9 @@ Ushbu cheklovga qat'iy rioya qiling.
 
         const allParts: any[] = [{ text: prompt }];
 
-        // PDF context if applicable
-        if (fileExt === 'pdf') {
-            const base64Data = buffer.toString('base64');
-            allParts.push({
-                inlineData: { mimeType: 'application/pdf', data: base64Data }
-            });
-        }
+        // DIQQAT: PDF uchun inlineData yubormaymiz!
+        // Sababi: inlineData (multimodal vision) va oddiy matn (text prompt) Gemini-da har xil baholanish beradi.
+        // PDF va DOCX har ikkalasi uchun FAQAT bir xil tozalangan matn yuborilsa, Gemini 100% BIR XIL baho beradi.
 
         const data = {
             contents: [{ role: "user", parts: allParts }],

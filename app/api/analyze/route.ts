@@ -226,7 +226,7 @@ ${JSON.stringify(dataToTranslate, null, 2)}
                         data: {
                             file_name: file.name,
                             file_type: fileExt,
-                            file_hash: contentHash,
+                            file_hash: exactHash,
                             analysis_score: translatedJson.total_score || translatedJson.score || existingOtherLang.analysis_score || 0,
                             compliance_score: translatedJson.compliance_score || existingOtherLang.compliance_score || 0,
                             favoritism_score: translatedJson.favoritism_score || existingOtherLang.favoritism_score || 0,

@@ -7,6 +7,22 @@ import { extractTextFromPDF } from '@/lib/pdfExtract';
 
 const mammoth = require('mammoth');
 
+/**
+ * PDF va DOCX dan olingan matnni BIR XIL formatga keltiradi.
+ * Bu funksiya orqali ikki xil formatdan kelgan bir xil kontent
+ * Gemini'ga bir xil matn sifatida yuboriladi → bir xil baho oladi.
+ */
+function normalizeText(raw: string): string {
+    return raw
+        .replace(/<[^>]*>/g, ' ')           // HTML teglarni olib tashlash (DOCX mammoth)
+        .replace(/\r\n/g, '\n')             // Windows line endings → Unix
+        .replace(/\f/g, '\n')               // Form feed (PDF sahifa uzilishi)
+        .replace(/\n{3,}/g, '\n\n')         // 3+ bo'sh qator → 2 ta
+        .replace(/[ \t]{2,}/g, ' ')          // Ortiqcha bo'shliq → 1 ta
+        .replace(/^\s+$/gm, '')              // Faqat bo'shliqdan iborat qatorlarni tozalash
+        .trim();
+}
+
 export async function POST(req: NextRequest) {
     try {
         const formData = await req.formData();
@@ -80,67 +96,23 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ success: false, error: 'Faqat PDF va DOCX fayllari ruxsat etiladi.' }, { status: 400 });
         }
 
-        // 2-BOSQICH: SMART FINGERPRINT VA MATN SIMILARITY MATNINI TAYYORLASH
-        // PDF va DOCX matnlarida sahifa raqamlari va formatlash farq qilishi mumkin.
-        // getDocumentFingerprint — tinish belgilari, sahifa raqamlari va ortiqcha bo'shliqlarsiz saralangan betakror so'zlarni hashlaydi.
-        const getDocumentFingerprint = (str: string): string => {
-            if (!str) return '';
-            const clean = str.replace(/<[^>]*>/g, ' ').replace(/[^\p{L}\p{N}\s]/gu, ' ').toLowerCase();
-            const words = clean.split(/\s+/).filter(w => w.length > 2 && isNaN(Number(w)));
-            const uniqueSortedWords = Array.from(new Set(words)).sort();
-            return crypto.createHash('md5').update(uniqueSortedWords.join(' ')).digest('hex');
-        };
+        // 2-BOSQICH: MATN NORMALIZATSIYASI
+        // PDF va DOCX dan olingan matnni BIR XIL formatga keltiramiz
+        const normalizedText = normalizeText(text);
+        console.log(`[Normalizatsiya] Asl matn: ${text.length} belgi → Normalizatsiya: ${normalizedText.length} belgi`);
 
-        const calculateTextSimilarity = (str1: string, str2: string): number => {
-            const getWords = (s: string) => {
-                const clean = s.replace(/<[^>]*>/g, ' ').replace(/[^\p{L}\p{N}\s]/gu, ' ').toLowerCase();
-                return new Set(clean.split(/\s+/).filter(w => w.length > 2 && isNaN(Number(w))));
-            };
-            const set1 = getWords(str1);
-            const set2 = getWords(str2);
-            if (set1.size === 0 || set2.size === 0) return 0;
-            let intersection = 0;
-            set1.forEach(w => { if (set2.has(w)) intersection++; });
-            const union = set1.size + set2.size - intersection;
-            return union > 0 ? intersection / union : 0;
-        };
+        // exactHash — normalizatsiya qilingan TO'LIQ matn hashi
+        // 1 ta belgi o'zgarsa ham hash BOSHQA bo'ladi → yangi tahlil
+        const exactHash = crypto.createHash('md5').update(normalizedText.toLowerCase()).digest('hex');
 
-        const contentHash = getDocumentFingerprint(text);
-        const rawTextHash = crypto.createHash('md5').update(text.replace(/\s+/g, ' ').trim().toLowerCase() || buffer).digest('hex');
-
-        // 3-BOSQICH: KESH TEKSHIRUVI (Hash + Matn Mantiqiy O'xshashligi)
+        // 3-BOSQICH: KESH TEKSHIRUVI (Faqat exactHash — 100% aniq moslik)
         let existing = await prisma.request.findFirst({ 
             where: {
-                OR: [
-                    { file_hash: contentHash },
-                    { file_hash: rawTextHash },
-                    { file_hash: binaryHash }
-                ],
+                file_hash: exactHash,
                 analysis_type: 'document',
                 language: lang,
             }
         });
-
-        // Agar aniq hash mos kelmasa, matn o'xshashligini (Similarity >= 50%) tekshiramiz:
-        if (!existing && text.length > 20) {
-            const recentRequests = await prisma.request.findMany({
-                where: { analysis_type: 'document', language: lang },
-                orderBy: { created_at: 'desc' },
-                take: 50
-            });
-
-            for (const req of recentRequests) {
-                const cachedText = (req.full_analysis as any)?.original_text || (req.full_analysis as any)?.extracted_full_text || req.corrected_version || '';
-                if (cachedText) {
-                    const similarity = calculateTextSimilarity(text, cachedText);
-                    if (similarity >= 0.50) { // 50% va undan ortiq so'zlar mos kelsa = bir xil hujjat!
-                        console.log(`[Smart Similarity Cache Hit] Fayl: '${file.name}' va Keshdagi: '${req.file_name}' moslik: ${Math.round(similarity * 100)}%`);
-                        existing = req;
-                        break;
-                    }
-                }
-            }
-        }
         
         if (existing) {
             console.log(`[Cache Hit] Hujjat keshdan olindi! (ID: ${existing.id}, Fayl: ${file.name})`);
@@ -156,10 +128,7 @@ export async function POST(req: NextRequest) {
         // Translation cache check - fayl bor lekin boshqa tilda bo'lsa
         const existingOtherLang = await prisma.request.findFirst({ 
             where: {
-                OR: [
-                    { file_hash: contentHash },
-                    { file_hash: binaryHash }
-                ],
+                file_hash: exactHash,
                 analysis_type: 'document',
             }
         });
@@ -282,11 +251,10 @@ ${JSON.stringify(dataToTranslate, null, 2)}
         // PDF uchun oddiy matn qoladi (PDF o'zi inline sifatida to'liq yuboriladi)
         // Gemini 3.1 Pro 1M token kontekstni qo'llab-quvvatlaydi (~800K belgi)
         // 50-100 varoqli hujjatlarni ham to'liq o'qish uchun chegara kengaytirildi
-        const isPdfInline = fileExt === 'pdf'; // PDF Gemini'ga ham inline yuboriladi
-        const geminiText = (fileExt === 'docx' && originalHtml) 
-            ? originalHtml.substring(0, 800000) 
-            : text.substring(0, 500000);
-        const isHtmlFormat = fileExt === 'docx' && !!originalHtml;
+        // PDF va DOCX uchun DOIM BIR XIL normalizatsiya qilingan matn yuboriladi
+        // Bu orqali fayl formatidan qat'i nazar bir xil baho olinadi
+        const geminiText = normalizedText.substring(0, 800000);
+        const isHtmlFormat = false; // Har doim oddiy matn sifatida yuboriladi
 
         // ============ DIAGNOSTIKA LOGLARI ============
         const totalLines = text.split('\n').length;
@@ -305,8 +273,8 @@ ${JSON.stringify(dataToTranslate, null, 2)}
         console.log('╠══════════════════════════════════════════════════════════╣');
         console.log(`║ 📝 Oddiy matn:       ${text.length.toLocaleString()} belgi`);
         console.log(`║ 🌐 HTML matn:        ${originalHtml.length.toLocaleString()} belgi`);
-        console.log(`║ 📨 Gemini-ga yuborilgan: ${isPdfInline ? `PDF inline (${(buffer.length / 1024).toFixed(0)} KB)` : `${geminiText.length.toLocaleString()} belgi`}`);
-        console.log(`║ ✂️  Kesilganmi:       ${isPdfInline ? '✅ YO\'Q (PDF to\'liq inline yuborildi)' : (geminiText.length < (isHtmlFormat ? originalHtml.length : text.length) ? '⚠️ HA (matn kesildi!)' : '✅ YO\'Q (to\'liq yuborildi)')}`);
+        console.log(`║ 📨 Gemini-ga yuborilgan: ${geminiText.length.toLocaleString()} belgi (normalizatsiya qilingan)`);
+        console.log(`║ ✂️  Kesilganmi:       ${geminiText.length < normalizedText.length ? '⚠️ HA (matn kesildi!)' : '✅ YO\'Q (to\'liq yuborildi)'}`);
         console.log('╠══════════════════════════════════════════════════════════╣');
         console.log(`║ 📃 Qatorlar soni:    ${totalLines.toLocaleString()}`);
         console.log(`║ 📖 Taxminiy varoqlar: ~${estimatedPages} varoq`);
@@ -353,12 +321,11 @@ ${JSON.stringify(dataToTranslate, null, 2)}
 
         // Avvalgi tahlil konteksti: Faqat BOSHQA hash bilan (ya'ni hujjat o'zgartirilgan bo'lsa) ko'rsatiladi.
         // Bir xil hash bo'lsa, yuqoridagi kesh tekshiruvida qaytarib yuborilgan bo'lardi.
-        // Fayl nomi bo'yicha EMAS, balki bir xil airport + til bo'yicha oldingi versiyani topamiz.
-        // MUHIM: file_hash != fileHash sharti — agar bir xil faylni qayta yuklasa, avvalgi natija ko'rsatilmaydi!
+        // MUHIM: exactHash != hozirgi hash → faqat BOSHQA versiyalar (o'zgartirilgan fayl)
         const previousRequest = await prisma.request.findFirst({
             where: {
                 file_name: file.name,
-                file_hash: { not: contentHash },  // ← Faqat BOSHQA versiyalar (o'zgartirilgan fayl)
+                file_hash: { not: exactHash },  // ← Faqat BOSHQA versiyalar (o'zgartirilgan fayl)
                 analysis_type: 'document',
                 language: lang,
                 airport: airport
@@ -510,9 +477,8 @@ Ushbu cheklovga qat'iy rioya qiling.
 
         const allParts: any[] = [{ text: prompt }];
 
-        // DIQQAT: PDF uchun inlineData yubormaymiz!
-        // Sababi: inlineData (multimodal vision) va oddiy matn (text prompt) Gemini-da har xil baholanish beradi.
-        // PDF va DOCX har ikkalasi uchun FAQAT bir xil tozalangan matn yuborilsa, Gemini 100% BIR XIL baho beradi.
+        // PDF va DOCX uchun FAQAT normalizatsiya qilingan matn yuboriladi.
+        // inlineData (multimodal vision) ISHLATILMAYDI — bir xillik uchun.
 
         const data = {
             contents: [{ role: "user", parts: allParts }],
@@ -574,31 +540,25 @@ Ushbu cheklovga qat'iy rioya qiling.
         resultJson.original_file_base64 = originalFileBase64 || '';
 
         // Diagnostika ma'lumotlari — frontendda ko'rsatish uchun
-        const diagSentLabel = isPdfInline 
-            ? `PDF inline (${Math.round(buffer.length / 1024)} KB)` 
-            : `${geminiText.length.toLocaleString()} belgi`;
-        const diagIsTruncated = isPdfInline 
-            ? false  // PDF to'liq inline yuboriladi
-            : geminiText.length < (isHtmlFormat ? originalHtml.length : text.length);
-
         resultJson.doc_diagnostics = {
             file_name: file.name,
             file_size_kb: Math.round(buffer.length / 1024),
             file_type: fileExt?.toUpperCase(),
             raw_text_length: text.length,
+            normalized_text_length: normalizedText.length,
             html_length: originalHtml.length,
-            sent_to_gemini: isPdfInline ? buffer.length : geminiText.length,
-            sent_to_gemini_label: diagSentLabel,
-            is_truncated: diagIsTruncated,
-            is_pdf_inline: !!isPdfInline,
-            total_lines: text ? text.split('\n').length : 0,
+            sent_to_gemini: geminiText.length,
+            sent_to_gemini_label: `${geminiText.length.toLocaleString()} belgi (normalizatsiya)`,
+            is_truncated: geminiText.length < normalizedText.length,
+            is_pdf_inline: false,
+            total_lines: normalizedText ? normalizedText.split('\n').length : 0,
             estimated_pages: pdfPageCount || Math.ceil((text.length || 1) / 3000),
             paragraphs: (originalHtml.match(/<p[\s>]/gi) || []).length,
             tables: (originalHtml.match(/<table[\s>]/gi) || []).length,
             headings: (originalHtml.match(/<h[1-6][\s>]/gi) || []).length,
             list_items: (originalHtml.match(/<li[\s>]/gi) || []).length,
-            first_text: text.substring(0, 100),
-            last_text: text.substring(Math.max(0, text.length - 100)),
+            first_text: normalizedText.substring(0, 100),
+            last_text: normalizedText.substring(Math.max(0, normalizedText.length - 100)),
         };
 
         // Save to DB
@@ -606,7 +566,7 @@ Ushbu cheklovga qat'iy rioya qiling.
             data: {
                 file_name: file.name,
                 file_type: fileExt,
-                file_hash: contentHash,
+                file_hash: exactHash,
                 analysis_score: resultJson.total_score || resultJson.score || 0,
                 compliance_score: resultJson.compliance_score || 0,
                 favoritism_score: resultJson.favoritism_score || 0,

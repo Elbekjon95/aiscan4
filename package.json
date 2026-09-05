@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "db:start": "node start-db.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
@@ -15,6 +16,7 @@
     "bcryptjs": "^3.0.3",
     "chart.js": "^4.5.1",
     "docx": "^9.7.0",
+    "embedded-postgres": "^18.4.0-beta.17",
     "formidable": "^3.5.4",
     "iron-session": "^8.0.4",
     "jspdf": "^4.2.1",

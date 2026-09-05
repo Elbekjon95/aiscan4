@@ -72,3 +72,4 @@ clear_all_requests.js
 reset.mjs
 gen_b64.js
 proxy.ts
+/.pg_data/
